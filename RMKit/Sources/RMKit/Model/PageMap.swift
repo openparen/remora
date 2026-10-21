@@ -27,17 +27,22 @@ public enum PageMap {
         if !content.cPages.isEmpty {
             // deleted pages stay in the list; numbering them would shift every later page
             let live = content.cPages.filter { !$0.deleted }.enumerated()
-            // idx is compared byte-wise, as the device does; missing idx sorts first
-            // ponytail: rm2agent refuses to number a document with a missing idx; we fall back to array order
-            let ordered = live.sorted { a, b in
-                let ai = Array((a.element.idx ?? "").utf8), bi = Array((b.element.idx ?? "").utf8)
-                return ai == bi ? a.offset < b.offset : ai.lexicographicallyPrecedes(bi)
+            // idx is compared byte-wise, as the device does
+            // ponytail: rm2agent refuses to number a document with a missing idx; we keep such a page right after the page before it in the array
+            var previous = ""
+            let keyed = live.map { offset, page -> (offset: Int, page: CPage, key: [UInt8]) in
+                let effective = page.idx ?? previous
+                previous = effective
+                return (offset, page, Array(effective.utf8))
             }
-            return ordered.enumerated().compactMap { offset, page in
-                guard let id = page.element.id else { return nil } // keeps its number, has no entry
+            let ordered = keyed.sorted { a, b in
+                a.key == b.key ? a.offset < b.offset : a.key.lexicographicallyPrecedes(b.key)
+            }
+            return ordered.enumerated().compactMap { offset, entry in
+                guard let id = entry.page.id else { return nil } // keeps its number, has no entry
                 let number = offset + 1
-                let source = page.element.redir.flatMap { $0 >= 0 ? $0 + 1 : nil }
-                return PageRef(id: id, number: number, sourcePage: source, template: template(page.element.template, number))
+                let source = entry.page.redir.flatMap { $0 >= 0 ? $0 + 1 : nil }
+                return PageRef(id: id, number: number, sourcePage: source, template: template(entry.page.template, number))
             }
         }
 

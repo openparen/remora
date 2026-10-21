@@ -9,13 +9,15 @@ import Testing
             CPage(id: "gone", idx: "ba", deleted: true),
             CPage(id: "a", idx: "B"), // a real byte-wise check: "B" (0x42) < "a" (0x61) < "bc"
             CPage(id: "b", idx: "a", template: "P Lines small"),
+            CPage(id: "d", idx: "z", redir: -1),
         ])
         let pages = PageMap.pages(content: content, rmPageIDs: [])
-        #expect(pages.map(\.id) == ["a", "b", "c"])
-        #expect(pages.map(\.number) == [1, 2, 3])
+        #expect(pages.map(\.id) == ["a", "b", "c", "d"])
+        #expect(pages.map(\.number) == [1, 2, 3, 4])
         #expect(pages[2].sourcePage == 5)
         #expect(pages[0].sourcePage == nil)
         #expect(pages[1].template == "P Lines small")
+        #expect(pages[3].sourcePage == nil)
     }
 
     @Test func legacyPagesUseTheRedirectionMap() {
@@ -47,7 +49,32 @@ import Testing
         let garbageRedir = try content(#"{"pages":["a","b"],"redirectionPageMap":"garbage"}"#)
         #expect(PageMap.pages(content: garbageRedir, rmPageIDs: []).map(\.sourcePage) == [nil, nil])
 
-        let badCPage = try content(#"{"cPages":{"pages":[{"id":"a"}, "oops", {"id":"b"}]}}"#)
+        let badCPage = try content(
+            #"{"cPages":{"pages":[{"id":"a","idx":{"timestamp":"1:1","value":"ba"}}, "oops", {"id":"b","idx":{"timestamp":"1:1","value":"bb"}}]}}"#)
         #expect(PageMap.pages(content: badCPage, rmPageIDs: []).map(\.number) == [1, 3])
+    }
+
+    @Test func aCPageWithNoIdxStaysAfterThePageBeforeIt() throws {
+        func content(_ json: String) throws -> DocumentContent {
+            try JSONDecoder().decode(DocumentContent.self, from: Data(json.utf8))
+        }
+
+        // the placeholder (no idx) must number right after "a", not sort first as ""
+        let withPlaceholder = try content(
+            #"{"cPages":{"pages":[{"id":"a","idx":{"timestamp":"1:1","value":"ba"}}, "oops", {"id":"b","idx":{"timestamp":"1:1","value":"bb"}}]}}"#)
+        let pages = PageMap.pages(content: withPlaceholder, rmPageIDs: [])
+        #expect(pages.map(\.id) == ["a", "b"])
+        #expect(pages.map(\.number) == [1, 3])
+
+        // a page with a real idx but no id, between two others, still keeps its number
+        let withIdlessPage = try content(
+            #"""
+            {"cPages":{"pages":[{"id":"x","idx":{"timestamp":"1:1","value":"xa"}},
+                                 {"idx":{"timestamp":"1:1","value":"xb"}},
+                                 {"id":"y","idx":{"timestamp":"1:1","value":"xc"}}]}}
+            """#)
+        let idlessPages = PageMap.pages(content: withIdlessPage, rmPageIDs: [])
+        #expect(idlessPages.map(\.id) == ["x", "y"])
+        #expect(idlessPages.map(\.number) == [1, 3])
     }
 }

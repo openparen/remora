@@ -33,9 +33,19 @@ import Testing
     }
 
     @Test func onlyEverBuildsPathsFromValidHashes() throws {
-        let cache = BlobCache(directory: temporaryDirectory(), limit: 10)
-        defer { try? FileManager.default.removeItem(at: cache.directory) }
-        #expect(cache.data(hash: "../../x", name: "doc.content") == nil)
-        #expect(throws: CloudError.self) { try cache.store(Data("x".utf8), hash: "../../x", name: "doc.content") }
+        // the cache sits two levels inside our own disposable root, so the real
+        // `keep/<prefix>/<hash>` escape for this hash lands back inside that root,
+        // never in the shared system temp directory
+        let root = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = BlobCache(directory: root.appending(path: "a/cache"), limit: 10)
+        let hash = "../../x"
+        let escape = cache.directory.appending(path: "keep").appending(path: String(hash.prefix(2))).appending(path: hash).standardized
+        try FileManager.default.createDirectory(at: escape.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("leaked".utf8).write(to: escape)
+        // the literal, unresolved `keep/../../../x` the code walks must exist too: ".." needs a real directory to climb out of
+        try FileManager.default.createDirectory(at: cache.directory.appending(path: "keep"), withIntermediateDirectories: true)
+        #expect(cache.data(hash: hash, name: "doc.content") == nil)
+        #expect(throws: CloudError.self) { try cache.store(Data("x".utf8), hash: hash, name: "doc.content") }
     }
 }
