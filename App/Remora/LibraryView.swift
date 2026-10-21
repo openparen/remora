@@ -90,8 +90,6 @@ struct LibraryView: View {
     @ViewBuilder private var detail: some View {
         if let problem = store.problem, store.accounts.isEmpty {
             ContentUnavailableView("Can't read accounts", systemImage: "lock", description: Text(problem))
-        } else if let problem = store.problem, place == nil {
-            Banner(problem)
         } else if store.accounts.isEmpty {
             ContentUnavailableView {
                 Label("No reMarkable account", systemImage: "person.crop.circle.badge.questionmark")
@@ -102,6 +100,7 @@ struct LibraryView: View {
             }
         } else if let place, let account = store.accounts.first(where: { $0.id == place.account }) {
             VStack(spacing: 0) {
+                if let problem = store.problem { Banner(problem) }
                 if let problem = account.problem { Banner(problem) }
                 if let library = account.library {
                     ItemTable(items: items(in: library, at: place), library: library, selection: $selected) { item in

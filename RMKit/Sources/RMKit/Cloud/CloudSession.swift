@@ -74,7 +74,7 @@ public actor CloudSession {
                 let token = try await auth.session(deviceToken: deviceToken)
                 return Authorized(token: token, claims: try TokenClaims(jwt: token))
             } catch {
-                await self.exchangeFailed(error)
+                self.exchangeFailed(error)
                 if let kept { return kept }
                 throw error
             }
