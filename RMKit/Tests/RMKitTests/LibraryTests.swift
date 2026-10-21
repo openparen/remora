@@ -63,4 +63,13 @@ import Testing
         #expect(library.failures.keys.sorted() == ["note"])
         #expect(library.items["note"] == nil)
     }
+
+    @Test func anUnparseableContentIsAFailureNotANotebook() async throws {
+        var blobs = Self.account()
+        blobs[fakeHash(22)] = Data("not json".utf8) // note.content is not an object at all
+        let root = RootHash(hash: fakeHash(1), generation: 1, schemaVersion: 4)
+        let library = try await Library.build(root: root, blobs: Self.store(blobs))
+        #expect(library.failures.keys.sorted() == ["note"])
+        #expect(library.items["note"] == nil)
+    }
 }

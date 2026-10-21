@@ -35,5 +35,6 @@ public struct AuthClient: Sendable {
         request.httpMethod = "POST"
         request.setValue("Bearer \(deviceToken)", forHTTPHeaderField: "Authorization")
         return String(decoding: try await http.data(request, retryTransient: false), as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

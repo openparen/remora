@@ -83,14 +83,16 @@ public struct Library: Sendable {
 
     private static func item(_ entry: Entry, blobs: BlobStore) async throws -> LibraryItem {
         let files = try await blobs.entries(hash: entry.hash, id: entry.id)
-        guard let metaFile = files.first(where: { $0.id.hasSuffix(".metadata") }) else {
+        guard let metaFile = files.first(where: { $0.id == "\(entry.id).metadata" }) else {
             throw CloudError.malformed("no .metadata")
         }
         let meta = try JSONDecoder().decode(ItemMetadata.self, from: try await blobs.data(hash: metaFile.hash, name: metaFile.id))
         var content: DocumentContent?
-        if let contentFile = files.first(where: { $0.id.hasSuffix(".content") }) {
+        if let contentFile = files.first(where: { $0.id == "\(entry.id).content" }) {
             let bytes = try await blobs.data(hash: contentFile.hash, name: contentFile.id)
-            content = try? JSONDecoder().decode(DocumentContent.self, from: bytes)
+            // DocumentContent's decoder is lenient per field; only non-object JSON throws here,
+            // and that's real loss, not something to paper over as a bare notebook.
+            content = try JSONDecoder().decode(DocumentContent.self, from: bytes)
         }
         let kind: LibraryItem.Kind = switch meta.type {
         case "CollectionType": .folder

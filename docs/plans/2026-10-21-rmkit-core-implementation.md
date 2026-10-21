@@ -3509,7 +3509,7 @@ git commit -m "test(rmkit): opt-in live test and the live golden diff against rm
 
 ## Done when
 
-- `swift test --package-path RMKit` passes: 46 tests in 20 suites, with the live suite skipped and Keychain included.
+- `swift test --package-path RMKit` passes: 66+ tests (46 from the plan plus the review fixes' regression tests) in 20 suites, with the live suite skipped and Keychain included.
 - The live test passes against the user's account, and `scripts/golden-live.sh` prints only `same` for a handful of notebooks, including at least one Paper Pro (1620-wide) page.
 - `remora-cli pair`, `ls`, `svg` and `png` work, and the `deviceDesc` outcome is recorded in the design doc.
 - No `TODO`, `.skip` or placeholder code. Check with `grep -rn "TODO\|FIXME" RMKit`, which should print nothing.

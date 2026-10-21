@@ -45,9 +45,9 @@ struct RemoraCLI {
             guard let user = try TokenClaims(jwt: deviceToken).userID else {
                 throw CloudError.malformed("the device token has no auth0-userid")
             }
-            // fetch before storing: a failure here must not leave a half-reported pairing
-            let email = try await CloudSession(deviceToken: deviceToken).claims().email
             try keychain.set(deviceToken, account: user)
+            // the code is spent once register succeeds: keep the token even if the email lookup fails
+            let email = (try? await CloudSession(deviceToken: deviceToken).claims())?.email
             print("paired \(email ?? user)")
         case ("accounts", 1):
             for account in try keychain.accounts() { print(account) }
