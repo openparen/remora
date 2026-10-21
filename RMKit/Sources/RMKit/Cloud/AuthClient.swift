@@ -23,7 +23,10 @@ public struct AuthClient: Sendable {
             "deviceDesc": "desktop-macos",
             "deviceID": deviceID.uuidString.lowercased(),
         ])
-        return String(decoding: try await http.data(request, retryTransient: false), as: UTF8.self)
+        let token = String(decoding: try await http.data(request, retryTransient: false), as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        _ = try TokenClaims(jwt: token)
+        return token
     }
 
     /// Mint a session token (lasts about a day) from a device token.

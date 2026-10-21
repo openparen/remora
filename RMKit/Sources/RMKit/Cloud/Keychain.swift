@@ -26,9 +26,12 @@ public struct Keychain: Sendable {
     }
 
     public func set(_ secret: String, account: String) throws {
-        SecItemDelete(query(account) as CFDictionary)
+        let data = Data(secret.utf8)
+        // update in place: deleting first would lose a device token if the add then failed
+        let status = SecItemUpdate(query(account) as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        guard status == errSecItemNotFound else { return try check(status) }
         var add = query(account)
-        add[kSecValueData as String] = Data(secret.utf8)
+        add[kSecValueData as String] = data
         try check(SecItemAdd(add as CFDictionary, nil))
     }
 

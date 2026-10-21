@@ -39,33 +39,42 @@ public actor CloudSession {
     }
 
     public func claims() async throws -> TokenClaims {
-        try await authorized(refresh: false).claims
+        try await authorized().claims
     }
 
-    /// Concurrent first callers share one exchange: the task is stored before
-    /// anyone awaits it.
+    /// Concurrent callers share one exchange, and its failure: the task is
+    /// stored before anyone awaits it, and cleared only by the caller that made
+    /// it, so the next call after a failure tries again.
+    /// `replacing` is the token that just got a 401: a newer one is reused,
+    /// that one is refreshed once however many requests saw it fail.
     // ponytail: two callers that both see an expiring token can each refresh; it happens once a day
-    private func authorized(refresh: Bool) async throws -> Authorized {
-        if !refresh, let current, let value = try? await current.value, !value.isExpiring {
-            return value
+    private func authorized(replacing stale: String? = nil) async throws -> Authorized {
+        if let current {
+            let value = try await current.value
+            if value.token != stale, !value.isExpiring { return value }
         }
         let fresh = Task { [auth, deviceToken] in
             let token = try await auth.session(deviceToken: deviceToken)
             return Authorized(token: token, claims: try TokenClaims(jwt: token))
         }
         current = fresh
-        return try await fresh.value
+        do {
+            return try await fresh.value
+        } catch {
+            if current == fresh { current = nil }
+            throw error
+        }
     }
 
     private func send(_ build: (URL) -> URLRequest) async throws -> Data {
-        var auth = try await authorized(refresh: false)
+        var auth = try await authorized()
         for attempt in 0..<2 {
             var request = build(syncHostOverride ?? CloudHosts.sync(tectonic: auth.claims.tectonic))
             request.setValue("Bearer \(auth.token)", forHTTPHeaderField: "Authorization")
             do {
                 return try await http.data(request)
             } catch CloudError.unauthorized where attempt == 0 {
-                auth = try await authorized(refresh: true)
+                auth = try await authorized(replacing: auth.token)
             }
         }
         throw CloudError.unauthorized

@@ -21,7 +21,9 @@ public enum CloudHosts {
 
     /// The session token's `tectonic` claim names the region; rmapi-js hardcodes "eu".
     public static func sync(tectonic: String?) -> URL {
-        let region = tectonic.flatMap { $0.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" } ? $0 : nil }
+        let region = tectonic.flatMap {
+            !$0.isEmpty && $0.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") } ? $0 : nil
+        }
         return URL(string: "https://\(region ?? "eu").tectonic.remarkable.com")!
     }
 }
