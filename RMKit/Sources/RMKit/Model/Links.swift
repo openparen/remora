@@ -40,7 +40,10 @@ public enum RemoraLink: Equatable, Sendable {
 
     /// `[Title p.12](rmr://…)`, for notes apps.
     public func markdown(title: String, pageNumber: Int? = nil) -> String {
-        var text = title.replacingOccurrences(of: "[", with: "\\[").replacingOccurrences(of: "]", with: "\\]")
+        var text = title
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "[", with: "\\[").replacingOccurrences(of: "]", with: "\\]")
+            .replacingOccurrences(of: "\n", with: " ")
         if let pageNumber { text += " p.\(pageNumber)" }
         return "[\(text)](\(url.absoluteString))"
     }

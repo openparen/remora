@@ -23,4 +23,9 @@ import Testing
         let link = RemoraLink.document(id: doc, page: page)
         #expect(link.markdown(title: "Notes [draft]", pageNumber: 12) == "[Notes \\[draft\\] p.12](rmr://doc/\(doc)?page=\(page))")
     }
+
+    @Test func refusesOverlongIdsAndEscapesBackslashes() {
+        #expect(RemoraLink(URL(string: "rmr://doc/\(String(repeating: "a", count: 65))")!) == nil)
+        #expect(RemoraLink.document(id: doc, page: nil).markdown(title: "a\\b\nc") == "[a\\\\b c](rmr://doc/\(doc))")
+    }
 }

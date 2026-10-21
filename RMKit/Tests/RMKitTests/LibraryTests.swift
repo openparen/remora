@@ -116,4 +116,31 @@ import Testing
         #expect(library.search("T").map(\.id).contains("note")) // by tag
         #expect(library.search("  ").isEmpty)
     }
+
+    @Test func whatStopsABuildAndWhatCostsOneItem() {
+        for error in [CloudError.unauthorized, .noSubscription, .http(status: 429, body: ""), .http(status: 503, body: "")] as [Error]
+            + [URLError(.notConnectedToInternet), CocoaError(.fileWriteOutOfSpace)] {
+            #expect(CloudError.failsEverything(error), "\(error)")
+        }
+        for error in [CloudError.http(status: 404, body: ""), .malformed("x"), .offline] as [Error] + [CocoaError(.fileReadCorruptFile)] {
+            #expect(!CloudError.failsEverything(error), "\(error)")
+        }
+    }
+
+    static func item(_ id: String, _ name: String, parent: String = "", kind: LibraryItem.Kind = .notebook, tags: [String] = []) -> LibraryItem {
+        LibraryItem(id: id, hash: fakeHash(1), name: name, parent: parent, kind: kind, pinned: false, tags: tags, lastModified: nil, pageCount: nil)
+    }
+
+    @Test func searchRanksNamesThenTagsThenPathsAndSkipsTrash() {
+        let items = [
+            Self.item("f", "Plans", kind: .folder),
+            Self.item("a", "Groceries", parent: "f"),          // path match
+            Self.item("b", "Budget", tags: ["plans"]),          // tag match
+            Self.item("c", "Plans 2027"),                       // name match
+            Self.item("d", "Plans old", parent: "trash"),       // trashed
+        ]
+        let library = Library(root: RootHash(hash: fakeHash(1), generation: 1, schemaVersion: 4),
+                              items: Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) }), failures: [:])
+        #expect(library.search("plans").map(\.id) == ["f", "c", "b", "a"])
+    }
 }

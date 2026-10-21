@@ -39,21 +39,24 @@ public actor AccountSync {
         guard let data = try? Data(contentsOf: rootFile),
               let root = try? JSONDecoder().decode(RootHash.self, from: data),
               let cached = try? await Library.build(root: root, blobs: offline)
-        else { return nil }
-        library = cached
-        return cached
+        else { return library }
+        // a refresh may have finished while the cache was read; never replace it with older data
+        if library == nil { library = cached }
+        return library
     }
 
     /// Re-read the root and rebuild what changed. Throws without touching the
     /// current library when the cloud can't be read.
     public func refresh() async throws -> Library {
         let root = try await latestRoot()
+        // trim on every refresh: opening documents grows the cache even when the root doesn't change
+        defer { try? blobs.cache.evict() }
         if let library, library.root == root, library.failures.isEmpty { return library }
         let fresh = try await Library.build(root: root, previous: library, blobs: blobs)
-        try FileManager.default.createDirectory(at: rootFile.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try JSONEncoder().encode(root).write(to: rootFile, options: .atomic)
-        try? blobs.cache.evict()
         library = fresh
+        // best effort: without it the next launch just starts from an older root
+        try? FileManager.default.createDirectory(at: rootFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? JSONEncoder().encode(root).write(to: rootFile, options: .atomic)
         return fresh
     }
 }

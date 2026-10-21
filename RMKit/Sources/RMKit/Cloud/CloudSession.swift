@@ -54,13 +54,19 @@ public actor CloudSession {
     /// `replacing` is the token that just got a 401: a newer one is reused,
     /// that one is refreshed once however many requests saw it fail.
     private func authorized(replacing stale: String? = nil) async throws -> Authorized {
+        // a token that is only nearing expiry still works; keep it if the refresh fails
+        var stillValid: Authorized?
         if let current {
             let value = try await current.value
             // another caller replaced the task while we waited: use theirs
             if self.current != current { return try await authorized(replacing: stale) }
             if value.token != stale, !value.isExpiring { return value }
+            if value.token != stale, (value.claims.expiry ?? .distantFuture) > Date() { stillValid = value }
         }
-        if let lastFailure, ContinuousClock.now < lastFailure.until { throw lastFailure.error }
+        if let lastFailure, ContinuousClock.now < lastFailure.until {
+            if let stillValid { return stillValid }
+            throw lastFailure.error
+        }
         let fresh = Task { [auth, deviceToken] in
             let token = try await auth.session(deviceToken: deviceToken)
             return Authorized(token: token, claims: try TokenClaims(jwt: token))
@@ -72,8 +78,12 @@ public actor CloudSession {
             return value
         } catch {
             if current == fresh {
-                current = nil
                 lastFailure = (error, ContinuousClock.now + failureCooldown)
+                if let stillValid {
+                    current = Task { stillValid }
+                    return stillValid
+                }
+                current = nil
             }
             throw error
         }

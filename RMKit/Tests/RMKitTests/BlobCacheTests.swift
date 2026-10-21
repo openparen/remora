@@ -92,4 +92,24 @@ import Testing
         defer { try? FileManager.default.removeItem(at: good.cache.directory) }
         #expect(try await good.data(hash: hello, name: "a.content") == Data("hello".utf8))
     }
+
+    @Test func aFailedFetchIsTriedAgain() async throws {
+        let calls = Locked(0)
+        let store = BlobStore(cache: BlobCache(directory: temporaryDirectory()), verifyHashes: false) { _, _ in
+            let n = calls.update { $0 += 1; return $0 }
+            if n == 1 { throw URLError(.timedOut) }
+            return Data("x".utf8)
+        }
+        defer { try? FileManager.default.removeItem(at: store.cache.directory) }
+        await #expect(throws: URLError.self) { try await store.data(hash: fakeHash(1), name: "a.rm") }
+        #expect(try await store.data(hash: fakeHash(1), name: "a.rm") == Data("x".utf8))
+        #expect(calls.value == 2)
+    }
+
+    @Test func anEntryListThatDoesNotParseIsNotCached() async throws {
+        let store = BlobStore(cache: BlobCache(directory: temporaryDirectory())) { _, _ in Data("<html>login</html>".utf8) }
+        defer { try? FileManager.default.removeItem(at: store.cache.directory) }
+        await #expect(throws: CloudError.self) { try await store.entries(hash: fakeHash(1), id: "root") }
+        #expect(store.cache.data(hash: fakeHash(1), name: "root.docSchema") == nil)
+    }
 }

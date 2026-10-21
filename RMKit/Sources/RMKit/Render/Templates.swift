@@ -21,6 +21,7 @@ public enum PageTemplate: Sendable, Equatable {
         let paperOriginX = w / 2 - h / 2
         switch name ?? "" {
         case "", "Blank", "blank": self = .blank
+        // ponytail: P Lines on a page turned landscape spans the full width; reMarkable's spans W/2-H/2 ... +H
         case "P Lines small", "LS Lines small": self = .lines(spacing: 52, top: 0)
         case "P Lines medium", "LS Lines medium": self = .lines(spacing: 78.7, top: 177.8)
         case "P Lines large": self = .lines(spacing: 97, top: 162)

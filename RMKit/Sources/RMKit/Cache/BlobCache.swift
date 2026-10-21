@@ -93,8 +93,13 @@ public struct BlobStore: Sendable {
     public func data(hash: String, name: String) async throws -> Data {
         if let data = cache.data(hash: hash, name: name) { return data }
         return try await gate.run(key: hash) { [cache, fetch, verifyHashes] in
+            // another caller may have finished this fetch while we waited
+            if let data = cache.data(hash: hash, name: name) { return data }
             let data = try await fetch(hash, name)
-            if verifyHashes, !name.hasSuffix(".docSchema") {
+            if name.hasSuffix(".docSchema") {
+                // not hash-checked (schema 3 hashes the children), so at least make sure it parses
+                _ = try Entries.parse(data)
+            } else if verifyHashes {
                 let actual = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
                 guard actual == hash else { throw CloudError.malformed("\(name) does not match its hash") }
             }
@@ -109,6 +114,7 @@ public struct BlobStore: Sendable {
 }
 
 /// Shares one in-flight task per key and bounds how many run at once.
+// ponytail: a cancelled caller still waits for its shared fetch; make waiting cancellable when thumbnails queue many
 actor FetchGate {
     private let limit: Int
     private var running = 0

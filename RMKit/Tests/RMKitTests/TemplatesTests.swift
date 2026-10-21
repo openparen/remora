@@ -45,4 +45,21 @@ import Testing
         #expect(ink(image, 700, 100) == 0) // the header area above it stays white
         #expect(ink(image, 700, 217) == 0) // halfway to the next line
     }
+
+    @Test func dotsSmallSitsOnTheFormulaOffset() {
+        #expect(PageTemplate(name: "P Dots S", page: rm2) == .dots(spacing: 42.5, x: -234 - 22 + 1))
+    }
+
+    @Test func dotsSurviveASmallRender() throws {
+        let blank = NormalizedPage(strokes: [], drops: PageDrops(), geometry: rm2)
+        let image = try FlatRenderer.image(blank, scale: 0.15, template: .dots(spacing: 78, x: 0))
+        var pixels = [UInt8](repeating: 0, count: image.width * image.height * 4)
+        let context = CGContext(
+            data: &pixels, width: image.width, height: image.height, bitsPerComponent: 8,
+            bytesPerRow: image.width * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        let dark = stride(from: 0, to: pixels.count, by: 4).filter { pixels[$0] < 255 }.count
+        #expect(dark > 300) // 432 dots; without antialiasing each still lands on a pixel
+    }
 }

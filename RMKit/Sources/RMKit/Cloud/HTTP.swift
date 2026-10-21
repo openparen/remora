@@ -25,6 +25,8 @@ public enum CloudError: Error, Equatable {
         case CloudError.unauthorized, CloudError.noSubscription: true
         case CloudError.http(let status, _): status == 429 || status >= 500
         case is URLError: true
+        // a full or read-only disk fails every cache write alike
+        case let error as CocoaError: error.code == .fileWriteOutOfSpace || error.code == .fileWriteVolumeReadOnly
         default: false
         }
     }

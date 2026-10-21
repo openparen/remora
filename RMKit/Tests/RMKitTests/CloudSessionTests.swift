@@ -146,4 +146,24 @@ import Testing
         }
         #expect(tokens.value == 2)
     }
+
+    @Test func aTokenNearingExpiryIsKeptWhenItsRefreshFails() async throws {
+        let tokens = Locked(0)
+        let (session, host) = StubProtocol.make { request in
+            switch request.url?.path() {
+            case "/token/json/2/user/new":
+                let n = tokens.update { $0 += 1; return $0 }
+                guard n == 1 else { return (429, Data()) }
+                // valid for two more minutes: inside the five-minute early-refresh window
+                return (200, Data(jwt(["exp": Date().timeIntervalSince1970 + 120]).utf8))
+            default:
+                return (200, Data(#"{"hash":"\#(fakeHash(1))","generation":7,"schemaVersion":4}"#.utf8))
+            }
+        }
+        let cloud = CloudSession(deviceToken: "device-token", session: session, authHost: host, syncHost: host, failureCooldown: .seconds(60))
+        _ = try await cloud.root()
+        _ = try await cloud.root() // refresh fails with 429, the old token still works
+        _ = try await cloud.root() // cooling down: no new exchange, old token again
+        #expect(tokens.value == 2)
+    }
 }
