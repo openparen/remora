@@ -24,18 +24,24 @@ struct LiveTests {
             .filter { $0.kind == .notebook && $0.parent != "trash" }
             .sorted { ($0.lastModified ?? .distantPast) > ($1.lastModified ?? .distantPast) }
             .prefix(count)
+        var rendered = 0
         for item in notebooks {
             let document = try await Document.load(item, blobs: blobs)
             for page in document.pages {
                 guard let ink = try await document.ink(page, blobs: blobs) else { continue }
                 #expect(!ink.drops.isLossy, "\(library.path(of: item.id)) page \(page.number): \(ink.drops)")
                 let svg = try SVG.render(ink)
-                if let dir = environment["REMORA_LIVE_SVG_DIR"] {
+                rendered += 1
+                // ids are server data: never let one climb out of the SVG directory
+                if let dir = environment["REMORA_LIVE_SVG_DIR"],
+                    !item.id.contains("/"), !item.id.contains(".."),
+                    !page.id.contains("/"), !page.id.contains("..") {
                     let folder = URL(filePath: dir).appending(path: item.id)
                     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
                     try svg.write(to: folder.appending(path: "\(page.id).svg"), atomically: true, encoding: .utf8)
                 }
             }
         }
+        #expect(rendered > 0)
     }
 }

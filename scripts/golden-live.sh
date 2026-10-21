@@ -6,21 +6,58 @@
 # Each run mints a session token per tool and document; reMarkable rate-limits
 # that exchange, so check a few documents at a time.
 set -euo pipefail
+cd "$(dirname "$0")/.."
+
+if [ "$#" -eq 0 ]; then
+  echo "usage: scripts/golden-live.sh \"<rm2agent path>\"..." >&2
+  exit 2
+fi
+
 out=${GOLDEN_OUT:-golden-out}
 status=0
-swift build --package-path RMKit -c release --product remora-cli >/dev/null
+
+swift build --package-path RMKit -c release --product remora-cli
 cli=$(swift build --package-path RMKit -c release --show-bin-path)/remora-cli
+
 for doc in "$@"; do
   manifest=$(rm2agent export "$doc" --format svg --out "$out/rm2agent" --json)
   id=$(jq -r .id <<<"$manifest")
+
+  rm -rf "$out/remora/$id"
   "$cli" svg "$id" "$out/remora/$id" >/dev/null
+
+  # into a temp file, not a process substitution: a jq failure must trip set -e
+  pages_file=$(mktemp)
+  jq -r '.pages[] | select(.svg) | [.pageId, .svg] | @tsv' <<<"$manifest" >"$pages_file"
+
+  compared=0
+  declare -A seen=()
   while IFS=$'\t' read -r page svg; do
+    compared=$((compared + 1))
+    seen["$page"]=1
     if cmp -s "$svg" "$out/remora/$id/$page.svg"; then
       echo "same  $doc  $page"
     else
       echo "DIFF  $doc  $page"
       status=1
     fi
-  done < <(jq -r '.pages[] | select(.svg) | [.pageId, .svg] | @tsv' <<<"$manifest")
+  done <"$pages_file"
+  rm -f "$pages_file"
+
+  if [ "$compared" -eq 0 ]; then
+    echo "NONE  $doc"
+    status=1
+  fi
+
+  for rendered in "$out/remora/$id"/*.svg; do
+    [ -e "$rendered" ] || continue
+    page=$(basename "$rendered" .svg)
+    if [ -z "${seen[$page]:-}" ]; then
+      echo "EXTRA  $doc  $page"
+      status=1
+    fi
+  done
+  unset seen
 done
+
 exit $status

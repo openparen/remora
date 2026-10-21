@@ -1,6 +1,12 @@
 import Foundation
 import RMKit
 
+/// A user-facing CLI error: printed as its message, not as an enum case dump.
+struct CLIError: Error, CustomStringConvertible {
+    let description: String
+    init(_ d: String) { description = d }
+}
+
 /// Developer tool: pair, list and render from the terminal.
 @main
 struct RemoraCLI {
@@ -13,6 +19,14 @@ struct RemoraCLI {
                remora-cli png <doc-id> <dir>  render inked pages as <page-id>.png
         Set REMORA_ACCOUNT to pick an account when more than one is paired.
         """
+
+    /// Entry and page ids are server data: never let one climb out of the output directory.
+    static func inside(_ out: URL, _ relative: String) throws -> URL {
+        guard !relative.isEmpty, !relative.hasPrefix("/"),
+              !relative.split(separator: "/", omittingEmptySubsequences: false).contains(where: { $0 == ".." || $0.isEmpty || $0 == "." })
+        else { throw CLIError("refusing to write \(relative)") }
+        return out.appending(path: relative)
+    }
 
     static func main() async {
         do {
@@ -31,8 +45,9 @@ struct RemoraCLI {
             guard let user = try TokenClaims(jwt: deviceToken).userID else {
                 throw CloudError.malformed("the device token has no auth0-userid")
             }
-            try keychain.set(deviceToken, account: user)
+            // fetch before storing: a failure here must not leave a half-reported pairing
             let email = try await CloudSession(deviceToken: deviceToken).claims().email
+            try keychain.set(deviceToken, account: user)
             print("paired \(email ?? user)")
         case ("accounts", 1):
             for account in try keychain.accounts() { print(account) }
@@ -45,17 +60,13 @@ struct RemoraCLI {
             for (id, why) in library.failures { FileHandle.standardError.write(Data("unreadable \(id): \(why)\n".utf8)) }
         case ("dump", 3), ("svg", 3), ("png", 3):
             let (blobs, library) = try await open(keychain)
-            guard let item = library.items[args[1]] else { throw CloudError.malformed("no document \(args[1])") }
+            guard let item = library.items[args[1]] else { throw CLIError("no document \(args[1])") }
             let out = URL(filePath: args[2], directoryHint: .isDirectory)
             try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
             let document = try await Document.load(item, blobs: blobs)
             if args[0] == "dump" {
                 for file in document.files {
-                    // entry ids are server data: never let one climb out of the output directory
-                    guard !file.id.hasPrefix("/"), !file.id.split(separator: "/").contains("..") else {
-                        throw CloudError.malformed("refusing to write \(file.id)")
-                    }
-                    let url = out.appending(path: file.id)
+                    let url = try inside(out, file.id)
                     try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
                     try await blobs.data(hash: file.hash, name: file.id).write(to: url)
                 }
@@ -64,15 +75,18 @@ struct RemoraCLI {
             }
             for page in document.pages {
                 guard let ink = try await document.ink(page, blobs: blobs) else { continue }
-                if ink.drops.isLossy { print("page \(page.number) (\(page.id)) lost ink: \(ink.drops)") }
+                if ink.drops.isLossy {
+                    FileHandle.standardError.write(Data("page \(page.number) (\(page.id)) lost ink: \(ink.drops)\n".utf8))
+                }
                 if args[0] == "svg" {
-                    try SVG.render(ink).write(to: out.appending(path: "\(page.id).svg"), atomically: true, encoding: .utf8)
+                    try SVG.render(ink).write(to: try inside(out, "\(page.id).svg"), atomically: true, encoding: .utf8)
                 } else {
-                    try FlatRenderer.png(try FlatRenderer.image(ink, scale: 1)).write(to: out.appending(path: "\(page.id).png"))
+                    try FlatRenderer.png(try FlatRenderer.image(ink, scale: 1)).write(to: try inside(out, "\(page.id).png"))
                 }
             }
         default:
-            print(usage)
+            FileHandle.standardError.write(Data((usage + "\n").utf8))
+            exit(2)
         }
     }
 
@@ -80,9 +94,9 @@ struct RemoraCLI {
         let accounts = try keychain.accounts()
         let wanted = ProcessInfo.processInfo.environment["REMORA_ACCOUNT"]
         guard let account = wanted ?? (accounts.count == 1 ? accounts[0] : nil) else {
-            throw CloudError.malformed(accounts.isEmpty ? "no account paired" : "set REMORA_ACCOUNT to one of \(accounts)")
+            throw CLIError(accounts.isEmpty ? "no account paired" : "set REMORA_ACCOUNT to one of \(accounts)")
         }
-        guard let deviceToken = try keychain.get(account: account) else { throw CloudError.malformed("no token for \(account)") }
+        guard let deviceToken = try keychain.get(account: account) else { throw CLIError("no token for \(account)") }
         let session = CloudSession(deviceToken: deviceToken)
         let blobs = BlobStore(cache: BlobCache(directory: BlobCache.directory(account: account))) { hash, name in
             try await session.file(hash: hash, name: name)

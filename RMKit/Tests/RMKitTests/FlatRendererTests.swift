@@ -40,4 +40,26 @@ import Testing
         #expect(abs(overlap - single) <= 3)
         #expect(abs(overlap - 166) <= 4) // 255 * (1 - 0.35)
     }
+
+    @Test func inkPushedFarOffThePageThrowsTooLarge() throws {
+        let ink = page([stroke([(1_000_000, 100, 10)], opacity: 1)])
+        do {
+            _ = try FlatRenderer.image(ink, scale: 1)
+            Issue.record("expected FlatRenderer.RenderError.tooLarge")
+        } catch FlatRenderer.RenderError.tooLarge {
+            // expected
+        }
+    }
+
+    @Test func aNonFiniteOrZeroScaleThrowsBadScale() throws {
+        let ink = page([stroke([(100, 100, 10), (300, 100, 10)], opacity: 1)])
+        for scale in [Double.nan, 0] {
+            do {
+                _ = try FlatRenderer.image(ink, scale: scale)
+                Issue.record("expected FlatRenderer.RenderError.badScale for scale \(scale)")
+            } catch FlatRenderer.RenderError.badScale {
+                // expected
+            }
+        }
+    }
 }
