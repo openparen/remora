@@ -4,7 +4,10 @@ import Testing
 
 @Suite struct CloudSessionTests {
     /// A fake cloud on one host: the token exchange, the root and one file.
-    static func fakeCloud(rootStatuses: [Int] = [200], tokenStatus: Int = 200) -> (CloudSession, Locked<Int>) {
+    static func fakeCloud(
+        rootStatuses: [Int] = [200],
+        tokenStatus: Locked<Int> = Locked(200)
+    ) -> (CloudSession, Locked<Int>) {
         let tokens = Locked(0)
         let roots = Locked(rootStatuses)
         let (session, host) = StubProtocol.make { request in
@@ -12,7 +15,8 @@ import Testing
             case "/token/json/2/user/new":
                 #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer device-token")
                 let n = tokens.update { $0 += 1; return $0 }
-                guard tokenStatus == 200 else { return (tokenStatus, Data()) }
+                let status = tokenStatus.value
+                guard status == 200 else { return (status, Data()) }
                 return (200, Data(jwt(["n": n, "exp": Date().timeIntervalSince1970 + 3600]).utf8))
             case "/sync/v4/root":
                 let status = roots.update { $0.count > 1 ? $0.removeFirst() : $0[0] }
@@ -61,7 +65,7 @@ import Testing
     }
 
     @Test func concurrentRequestsShareAFailedExchange() async throws {
-        let (cloud, tokens) = Self.fakeCloud(tokenStatus: 429)
+        let (cloud, tokens) = Self.fakeCloud(tokenStatus: Locked(429))
         await withTaskGroup(of: Bool.self) { group in
             for _ in 0..<5 {
                 group.addTask {
@@ -78,6 +82,15 @@ import Testing
             #expect(allThrew)
         }
         #expect(tokens.value == 1)
+    }
+
+    @Test func recoversAfterAFailedExchange() async throws {
+        let tokenStatus = Locked(429)
+        let (cloud, tokens) = Self.fakeCloud(tokenStatus: tokenStatus)
+        await #expect(throws: CloudError.self) { _ = try await cloud.root() }
+        tokenStatus.update { $0 = 200 }
+        _ = try await cloud.root()
+        #expect(tokens.value == 2)
     }
 
     @Test func concurrent401sShareOneRefresh() async throws {

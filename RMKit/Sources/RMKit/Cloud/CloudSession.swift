@@ -47,10 +47,11 @@ public actor CloudSession {
     /// it, so the next call after a failure tries again.
     /// `replacing` is the token that just got a 401: a newer one is reused,
     /// that one is refreshed once however many requests saw it fail.
-    // ponytail: two callers that both see an expiring token can each refresh; it happens once a day
     private func authorized(replacing stale: String? = nil) async throws -> Authorized {
         if let current {
             let value = try await current.value
+            // another caller replaced the task while we waited: use theirs
+            if self.current != current { return try await authorized(replacing: stale) }
             if value.token != stale, !value.isExpiring { return value }
         }
         let fresh = Task { [auth, deviceToken] in

@@ -20,4 +20,11 @@ import Testing
     @Test func refusesAShortCode() async {
         await #expect(throws: CloudError.self) { try await AuthClient().register(code: "abc") }
     }
+
+    @Test func rejectsANonJWTDeviceToken() async {
+        let (session, host) = StubProtocol.make { _ in (200, Data("device-token".utf8)) }
+        await #expect(throws: CloudError.self) {
+            try await AuthClient(session: session, host: host).register(code: "abcdefgh")
+        }
+    }
 }
