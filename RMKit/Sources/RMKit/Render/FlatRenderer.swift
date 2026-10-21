@@ -48,8 +48,8 @@ public enum FlatRenderer {
         }
     }
 
-    /// The page on white, covering the same box as the SVG.
-    public static func image(_ page: NormalizedPage, scale: Double) throws -> CGImage {
+    /// The page on white with its template under the ink, covering the same box as the SVG.
+    public static func image(_ page: NormalizedPage, scale: Double, template: PageTemplate = .blank) throws -> CGImage {
         guard scale.isFinite, scale > 0 else { throw RenderError.badScale(scale) }
         let box = try SVG.paintBox(page)
         let w = (box.width * scale).rounded(.up), h = (box.height * scale).rounded(.up)
@@ -68,6 +68,7 @@ public enum FlatRenderer {
         context.translateBy(x: 0, y: CGFloat(height))
         context.scaleBy(x: scale, y: -scale)
         context.translateBy(x: -box.x, y: -box.y)
+        template.draw(in: context, page: page.geometry)
         try draw(page, in: context)
         guard let image = context.makeImage() else { throw RenderError.unavailable("image from bitmap context") }
         return image
