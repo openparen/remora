@@ -97,7 +97,8 @@ public enum SVG {
             let runs = try runs(stroke.points)
             if runs.isEmpty { continue }
             let color = stroke.style.color
-            guard color.count == 7, color.hasPrefix("#"), color.dropFirst().allSatisfy(\.isHexDigit) else {
+            guard color.count == 7, color.hasPrefix("#"),
+                  color.dropFirst().allSatisfy({ $0.isASCII && $0.isHexDigit }) else {
                 throw Error.badColor(color)
             }
             let opacity = max(try round(stroke.style.opacity, opacityDecimals, "opacity"), minOpacity)

@@ -82,6 +82,22 @@ import Testing
         #expect(page.unreadableBlocks >= 1)
     }
 
+    /// A label length that fits `Int` but dwarfs the file used to overflow
+    /// the `offset + count` bounds check in `take()`.
+    @Test func labelLengthNearIntMaxDoesNotOverflow() throws {
+        let nearMaxVaruint = varuintBytes(UInt64(Int.max - 2))
+        let stringSubblock = subblockHeaderBytes(2, length: nearMaxVaruint.count) + nearMaxVaruint
+        let lww2Body = idBytes(1, CrdtID(author: 0, counter: 1)) + stringSubblock // timestamp + string
+        let lww2 = subblockHeaderBytes(2, length: lww2Body.count) + lww2Body
+        let body = idBytes(1, CrdtID(author: 0, counter: 1)) + lww2 // node id + label lww
+
+        var data = v6Header()
+        data.append(contentsOf: blockBytes(type: 0x02, body: body))
+
+        let page = try parseRM(data)
+        #expect(page.unreadableBlocks >= 1)
+    }
+
     /// A chain of ~1000 nested group items must not blow the stack when the
     /// tree is flattened back to front.
     @Test func deeplyNestedGroupsDoNotCrashAndAreCounted() throws {

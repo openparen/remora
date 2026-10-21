@@ -55,7 +55,7 @@ import Testing
     }
 
     @Test func manySimultaneousItemsSortQuicklyAndCorrectly() {
-        let items = (0..<5000).map { i in
+        let items = (0..<20000).map { i in
             Item(id: c(UInt64(i), author: UInt8(1 + i % 3)), left: .end, right: .end)
         }
         let expected = items.sorted { lhs, rhs in
