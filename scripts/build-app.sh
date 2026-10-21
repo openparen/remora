@@ -12,6 +12,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 config=${1:-Debug}
+case "$config" in Debug|Release) ;; *) echo "usage: scripts/build-app.sh [Debug|Release]" >&2; exit 2 ;; esac
 dd=${REMORA_DERIVED_DATA:-$HOME/Library/Developer/Xcode/DerivedData/Remora-local}
 mkdir -p "$dd"
 
@@ -29,4 +30,6 @@ if ! xcodebuild -project Remora.xcodeproj -scheme Remora -configuration "$config
   exit 1
 fi
 grep -E "warning: " "$log" | grep -v "Metadata extraction skipped" >&2 || true
-echo "$dd/Build/Products/$config/Remora.app"
+app="$dd/Build/Products/$config/Remora.app"
+[ -d "$app" ] || { echo "build succeeded but $app is missing" >&2; exit 1; }
+echo "$app"

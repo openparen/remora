@@ -22,8 +22,8 @@ struct DocumentLink: Codable, Hashable {
 @MainActor @Observable final class Router {
     static let shared = Router()
 
-    /// The folder a link asked the Library to show.
-    var folderRequest: String?
+    /// The folder a link asked the Library to show; the nonce makes a repeated link count again.
+    var folderRequest: (folder: String, nonce: Int)?
     /// docID → the page its window should scroll to. The nonce makes a repeated
     /// link to the same page scroll again.
     var pageRequest: [String: (page: String, nonce: Int)] = [:]
@@ -57,7 +57,8 @@ struct DocumentLink: Codable, Hashable {
             }
             openWindow(value: DocumentLink(docID: id, pageID: page))
         case .folder(let id):
-            folderRequest = id
+            nonce += 1
+            folderRequest = (id, nonce)
             openWindow(id: "library")
         }
     }

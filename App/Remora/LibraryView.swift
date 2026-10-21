@@ -14,7 +14,10 @@ struct LibraryView: View {
     @State private var place: Place?
     @State private var search = ""
     @State private var pairing = false
+    @State private var removing: AccountState?
     @State private var selected: Set<LibraryItem.ID> = []
+    /// A folder link waiting for a library that knows the folder.
+    @State private var pendingFolder: String?
     private let store = AccountStore.shared
     private let router = Router.shared
 
@@ -22,13 +25,17 @@ struct LibraryView: View {
         NavigationSplitView {
             List(selection: $place) {
                 ForEach(store.accounts) { account in
-                    Section(account.label) {
+                    Section {
                         Label("Library", systemImage: "books.vertical").tag(Place(account: account.id, folder: ""))
                         Label("Pinned", systemImage: "pin").tag(Place(account: account.id, folder: Place.pinned))
                         if let library = account.library {
                             OutlineGroup(library.folders(), children: \.children) { folder in
                                 Label(folder.name, systemImage: "folder").tag(Place(account: account.id, folder: folder.id))
                             }
+                        }
+                    } header: {
+                        Text(account.label).contextMenu {
+                            Button("Remove Account…") { removing = account }
                         }
                     }
                 }
@@ -46,21 +53,44 @@ struct LibraryView: View {
                 .keyboardShortcut("r")
         }
         .sheet(isPresented: $pairing) { PairingSheet() }
+        .confirmationDialog("Remove \(removing?.label ?? "")?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), presenting: removing) { account in
+            Button("Remove Account", role: .destructive) {
+                if place?.account == account.id { place = nil }
+                store.remove(account)
+                removing = nil
+            }
+            Button("Cancel", role: .cancel) { removing = nil }
+        } message: { _ in
+            Text("Remora forgets this account and its cached files. The documents stay in your reMarkable cloud.")
+        }
         .frame(minWidth: 720, minHeight: 420)
         .onAppear {
             router.attach(openWindow)
-            if store.accounts.isEmpty && store.loaded { pairing = true }
+            if store.accounts.isEmpty && store.loaded && store.problem == nil { pairing = true }
         }
         .onChange(of: store.accounts.first?.id) { if place == nil, let id = $1 { place = Place(account: id, folder: "") } }
-        .onChange(of: router.folderRequest) { _, id in
-            guard let id, let (account, _) = store.locate(id) else { return }
+        .onChange(of: router.folderRequest?.nonce) {
+            pendingFolder = router.folderRequest?.folder
+            showPendingFolder()
+        }
+        // a folder link that arrived before the libraries did
+        .onChange(of: store.stillLoading) { showPendingFolder() }
+        .onChange(of: place) {
             search = ""
-            place = Place(account: account.id, folder: id)
+            selected = []
         }
     }
 
+    private func showPendingFolder() {
+        guard let id = pendingFolder, let (account, _) = store.locate(id) else { return }
+        pendingFolder = nil
+        place = Place(account: account.id, folder: id)
+    }
+
     @ViewBuilder private var detail: some View {
-        if store.accounts.isEmpty {
+        if let problem = store.problem, store.accounts.isEmpty {
+            ContentUnavailableView("Can't read accounts", systemImage: "lock", description: Text(problem))
+        } else if store.accounts.isEmpty {
             ContentUnavailableView {
                 Label("No reMarkable account", systemImage: "person.crop.circle.badge.questionmark")
             } description: {
@@ -70,13 +100,10 @@ struct LibraryView: View {
             }
         } else if let place, let account = store.accounts.first(where: { $0.id == place.account }) {
             VStack(spacing: 0) {
-                if let problem = account.problem {
-                    Text(problem).font(.callout).padding(8).frame(maxWidth: .infinity).background(.yellow.opacity(0.25))
-                }
+                if let problem = account.problem { Banner(problem) }
                 if let library = account.library {
                     ItemTable(items: items(in: library, at: place), library: library, selection: $selected) { item in
                         if item.kind == .folder {
-                            search = ""
                             self.place = Place(account: account.id, folder: item.id)
                         } else {
                             router.open(.document(id: item.id, page: nil))
@@ -99,9 +126,9 @@ struct LibraryView: View {
             return library.items.values.filter { $0.pinned && !library.isInTrash($0.id) }
                 .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         }
-        // folders first, then documents, each by name
-        return library.children(of: place.folder).filter { $0.kind != .template }
-            .sorted { ($0.kind == .folder ? 0 : 1, $0.name) < ($1.kind == .folder ? 0 : 1, $1.name) }
+        // folders first, then documents; children(of:) already orders each by name, as Finder does
+        let items = library.children(of: place.folder).filter { $0.kind != .template }
+        return items.filter { $0.kind == .folder } + items.filter { $0.kind != .folder }
     }
 
     private func title(for place: Place, in account: AccountState) -> String {
@@ -133,14 +160,14 @@ struct ItemTable: View {
                 .width(min: 40, ideal: 50)
         }
         .contextMenu(forSelectionType: LibraryItem.ID.self) { ids in
-            if let id = ids.first, let item = library.items[id] {
+            if ids.count == 1, let id = ids.first, let item = library.items[id] {
                 Button("Open") { open(item) }
                 Divider()
                 Button("Copy Link") { Clipboard.copy(link(item).url.absoluteString) }
                 Button("Copy as Markdown Link") { Clipboard.copy(link(item).markdown(title: item.name)) }
             }
         } primaryAction: { ids in
-            if let id = ids.first, let item = library.items[id] { open(item) }
+            for id in ids { if let item = library.items[id] { open(item) } }
         }
     }
 
@@ -184,13 +211,13 @@ struct PairingSheet: View {
                             try await AccountStore.shared.pair(code: code)
                             dismiss()
                         } catch {
-                            problem = AccountState.describe(error)
+                            problem = AccountStore.describePairing(error)
                             working = false
                         }
                     }
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(code.trimmingCharacters(in: .whitespaces).count != 8 || working)
+                .disabled(code.trimmingCharacters(in: .whitespacesAndNewlines).count != 8 || working)
             }
         }
         .padding(20)

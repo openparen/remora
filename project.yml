@@ -18,6 +18,8 @@ targets:
       path: App/Remora/Info.plist
       properties:
         CFBundleDisplayName: Remora
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSApplicationCategoryType: public.app-category.productivity
         CFBundleURLTypes:
           - CFBundleURLName: io.github.gveres.remora
