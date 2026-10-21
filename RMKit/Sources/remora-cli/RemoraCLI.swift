@@ -1,0 +1,106 @@
+import Foundation
+import RMKit
+
+/// A user-facing CLI error: printed as its message, not as an enum case dump.
+struct CLIError: Error, CustomStringConvertible {
+    let description: String
+    init(_ d: String) { description = d }
+}
+
+/// Developer tool: pair, list and render from the terminal.
+@main
+struct RemoraCLI {
+    static let usage = """
+        usage: remora-cli pair <code>        pair an account (code from my.remarkable.com)
+               remora-cli accounts            list paired accounts
+               remora-cli ls                  list the library
+               remora-cli dump <doc-id> <dir> write the document's raw files
+               remora-cli svg <doc-id> <dir>  render inked pages as <page-id>.svg
+               remora-cli png <doc-id> <dir>  render inked pages as <page-id>.png
+        Set REMORA_ACCOUNT to pick an account when more than one is paired.
+        """
+
+    /// Entry and page ids are server data: never let one climb out of the output directory.
+    static func inside(_ out: URL, _ relative: String) throws -> URL {
+        guard !relative.isEmpty, !relative.hasPrefix("/"),
+              !relative.split(separator: "/", omittingEmptySubsequences: false).contains(where: { $0 == ".." || $0.isEmpty || $0 == "." })
+        else { throw CLIError("refusing to write \(relative)") }
+        return out.appending(path: relative)
+    }
+
+    static func main() async {
+        do {
+            try await run(Array(CommandLine.arguments.dropFirst()))
+        } catch {
+            FileHandle.standardError.write(Data("error: \(error)\n".utf8))
+            exit(1)
+        }
+    }
+
+    static func run(_ args: [String]) async throws {
+        let keychain = Keychain()
+        switch (args.first, args.count) {
+        case ("pair", 2):
+            let deviceToken = try await AuthClient().register(code: args[1])
+            guard let user = try TokenClaims(jwt: deviceToken).userID else {
+                throw CloudError.malformed("the device token has no auth0-userid")
+            }
+            try keychain.set(deviceToken, account: user)
+            // the code is spent once register succeeds: keep the token even if the email lookup fails
+            let email = (try? await CloudSession(deviceToken: deviceToken).claims())?.email
+            print("paired \(email ?? user)")
+        case ("accounts", 1):
+            for account in try keychain.accounts() { print(account) }
+        case ("ls", 1):
+            let (_, library) = try await open(keychain)
+            let items = library.items.values.filter { $0.parent != "trash" && $0.kind != .template }
+            for item in items.sorted(by: { library.path(of: $0.id) < library.path(of: $1.id) }) {
+                print("\(item.id)  \(item.kind.rawValue.padding(toLength: 8, withPad: " ", startingAt: 0))  \(library.path(of: item.id))")
+            }
+            for (id, why) in library.failures { FileHandle.standardError.write(Data("unreadable \(id): \(why)\n".utf8)) }
+        case ("dump", 3), ("svg", 3), ("png", 3):
+            let (blobs, library) = try await open(keychain)
+            guard let item = library.items[args[1]] else { throw CLIError("no document \(args[1])") }
+            let out = URL(filePath: args[2], directoryHint: .isDirectory)
+            try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+            let document = try await Document.load(item, blobs: blobs)
+            if args[0] == "dump" {
+                for file in document.files {
+                    let url = try inside(out, file.id)
+                    try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    try await blobs.data(hash: file.hash, name: file.id).write(to: url)
+                }
+                print("wrote \(document.files.count) files")
+                return
+            }
+            for page in document.pages {
+                guard let ink = try await document.ink(page, blobs: blobs) else { continue }
+                if ink.drops.isLossy {
+                    FileHandle.standardError.write(Data("page \(page.number) (\(page.id)) lost ink: \(ink.drops)\n".utf8))
+                }
+                if args[0] == "svg" {
+                    try SVG.render(ink).write(to: try inside(out, "\(page.id).svg"), atomically: true, encoding: .utf8)
+                } else {
+                    try FlatRenderer.png(try FlatRenderer.image(ink, scale: 1)).write(to: try inside(out, "\(page.id).png"))
+                }
+            }
+        default:
+            FileHandle.standardError.write(Data((usage + "\n").utf8))
+            exit(2)
+        }
+    }
+
+    static func open(_ keychain: Keychain) async throws -> (BlobStore, Library) {
+        let accounts = try keychain.accounts()
+        let wanted = ProcessInfo.processInfo.environment["REMORA_ACCOUNT"]
+        guard let account = wanted ?? (accounts.count == 1 ? accounts[0] : nil) else {
+            throw CLIError(accounts.isEmpty ? "no account paired" : "set REMORA_ACCOUNT to one of \(accounts)")
+        }
+        guard let deviceToken = try keychain.get(account: account) else { throw CLIError("no token for \(account)") }
+        let session = CloudSession(deviceToken: deviceToken)
+        let blobs = BlobStore(cache: BlobCache(directory: BlobCache.directory(account: account))) { hash, name in
+            try await session.file(hash: hash, name: name)
+        }
+        return (blobs, try await Library.build(root: try await session.root(), blobs: blobs))
+    }
+}

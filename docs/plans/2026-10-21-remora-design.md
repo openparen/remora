@@ -44,7 +44,7 @@ The name: a remora is the fish that rides along on something bigger.
 | PDF export | Export PDF… (Cmd-Shift-E) and the Share button. Ink is always flat vectors: over the drawn template for a notebook, over the original PDF for a PDF or EPUB, so its text stays selectable. Exports the whole document or the current page |
 | Cache | Content-addressed, under `~/Library/Caches/Remora/<account>/`. Least recently used is evicted once it passes 2 GB (configurable). Entry lists and the index are never evicted. Cached content can be browsed offline, and the app shows when it last synced |
 | Lifecycle | Syncs only while the app is running. No menu-bar agent, login item or daemon. A link opened while the app is closed launches it, shows the cached copy, then refreshes |
-| Tests | Committed fixtures come only from a purpose-made notebook and PDF on the tablet. Golden diffs against the real library run locally and are never committed. Live cloud tests are opt-in through an env var |
+| Tests | Committed fixtures are rmscene's MIT-licensed samples (with their goldens) plus, later, a purpose-made fixtures notebook and PDF on the tablet; never content from the user's own library. Golden diffs against the real library run locally and are never committed. Live cloud tests are opt-in through an env var |
 
 ### Rejected
 
@@ -181,8 +181,9 @@ only in the tablet's firmware. Names in the user's account include
 
 **Pages, pens and colours.**
 - Page geometry: **each page** has its own screen size. 1404×1872 and
-  1620×2160 both appear, even within one document. Orientation is per page
-  too.
+  1620×2160 both appear, even within one document. Orientation, by contrast,
+  is a document-level fact from `.content`; no page carries it (measured on
+  rm2agent).
 - v6 layers can be hidden, and eraser strokes are dropped from rendering.
 - Pen codes:
 
@@ -222,8 +223,9 @@ text of each one is joined in reading order (rm2agent's `joinHighlights`).
 - Each stroke is drawn with Core Graphics as runs of segments whose width
   varies.
 - **Golden check:** render the same pages with rm2agent's `export --format
-  svg` and with RMKit, then compare after rasterising both. Fixture pages
-  are committed; pages from the real library run locally only.
+  svg` and with RMKit, then compare the SVG text byte-for-byte, not a
+  rasterised comparison. Fixture pages are committed; pages from the real
+  library run locally only.
 
 **PDF and EPUB.**
 - PDFKit draws the page, and the ink layer sits on top in PDF points
@@ -331,8 +333,15 @@ the Plain ink preference.
   device or per account hasn't been measured.
 - **`deviceDesc` at pairing** is a fixed list in rmapi-js (`desktop-macos`,
   `desktop-windows`, …, `browser-chrome`). Remora registers as
-  `desktop-macos`. Whether the cloud treats that like the official desktop
-  app (device slots, or the desktop app being signed out) is unverified.
+  `desktop-macos`. **Verified 2026-10-21:** pairing as `desktop-macos` with a
+  code from `my.remarkable.com/device/desktop/connect` works. Whether it
+  costs a desktop-app slot (or signs the official desktop app out) is still
+  unobserved.
 - **How firmware 3 draws pencil.** The only official reference found shows
   1-bit stipple (firmware 2.x). M2 tuning should treat photos of the user's
   tablet as the truth.
+- **A Keychain item paired with `remora-cli` is owned by that binary, not
+  the app.** macOS ties Keychain access control to the signing identity of
+  the process that created the item, so the signed Remora app will prompt
+  once to read a device token the unsigned (or differently signed)
+  developer CLI stored.
