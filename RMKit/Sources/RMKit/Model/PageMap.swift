@@ -6,7 +6,9 @@ public struct PageRef: Sendable, Equatable {
     public let id: String
     /// One-based, derived from the order. Links key on `id`, never on this.
     public let number: Int
-    /// One-based source PDF page; nil for notebook pages and pages inserted into a PDF.
+    /// One-based source PDF page. nil for a page inserted into a PDF. A legacy
+    /// document with no redirection map gets identity, so a notebook's caller
+    /// ignores this field.
     public let sourcePage: Int?
     public let template: String?
 }
@@ -41,10 +43,11 @@ public enum PageMap {
 
         if let pages = content.pages, !pages.isEmpty {
             let map = content.redirectionPageMap ?? []
-            return pages.enumerated().map { offset, id in
+            return pages.enumerated().compactMap { offset, id in
                 let number = offset + 1
                 // no map means each page sits on the source page of the same number
-                let source: Int? = map.isEmpty ? number : map.indices.contains(offset) && map[offset] >= 0 ? map[offset] + 1 : nil
+                let source: Int? = map.isEmpty ? number : (map.indices.contains(offset) ? map[offset] : nil).flatMap { $0 >= 0 ? $0 + 1 : nil }
+                guard let id else { return nil } // keeps its number, has no entry
                 return PageRef(id: id, number: number, sourcePage: source, template: template(nil, number))
             }
         }

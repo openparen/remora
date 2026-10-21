@@ -54,4 +54,13 @@ import Testing
         #expect(second.items["note"] == first.items["note"])
         #expect(second.failures.keys.sorted() == ["broken"])
     }
+
+    @Test func aFailedContentFetchIsAFailureNotANotebook() async throws {
+        var blobs = Self.account()
+        blobs.removeValue(forKey: fakeHash(22)) // note.content 404s
+        let root = RootHash(hash: fakeHash(1), generation: 1, schemaVersion: 4)
+        let library = try await Library.build(root: root, blobs: Self.store(blobs))
+        #expect(library.failures.keys.sorted() == ["note"])
+        #expect(library.items["note"] == nil)
+    }
 }

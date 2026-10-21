@@ -47,6 +47,7 @@ public struct Library: Sendable {
         blobs: BlobStore,
         concurrency: Int = 8
     ) async throws -> Library {
+        precondition(concurrency > 0)
         let entries = try await blobs.entries(hash: root.hash, id: "root")
         var items: [String: LibraryItem] = [:]
         var failures: [String: String] = [:]
@@ -88,7 +89,8 @@ public struct Library: Sendable {
         let meta = try JSONDecoder().decode(ItemMetadata.self, from: try await blobs.data(hash: metaFile.hash, name: metaFile.id))
         var content: DocumentContent?
         if let contentFile = files.first(where: { $0.id.hasSuffix(".content") }) {
-            content = try? JSONDecoder().decode(DocumentContent.self, from: try await blobs.data(hash: contentFile.hash, name: contentFile.id))
+            let bytes = try await blobs.data(hash: contentFile.hash, name: contentFile.id)
+            content = try? JSONDecoder().decode(DocumentContent.self, from: bytes)
         }
         let kind: LibraryItem.Kind = switch meta.type {
         case "CollectionType": .folder

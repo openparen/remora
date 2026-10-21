@@ -88,6 +88,9 @@ public actor CloudSession {
         guard root.schemaVersion == 3 || root.schemaVersion == 4 else {
             throw CloudError.malformed("root schema version \(root.schemaVersion)")
         }
+        guard Entries.isHash(root.hash) else {
+            throw CloudError.malformed("not a hash: \(root.hash)")
+        }
         return root
     }
 

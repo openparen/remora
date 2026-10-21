@@ -31,4 +31,11 @@ import Testing
         _ = try await store.data(hash: fakeHash(1), name: "a.content")
         #expect(fetches.value == 1)
     }
+
+    @Test func onlyEverBuildsPathsFromValidHashes() throws {
+        let cache = BlobCache(directory: temporaryDirectory(), limit: 10)
+        defer { try? FileManager.default.removeItem(at: cache.directory) }
+        #expect(cache.data(hash: "../../x", name: "doc.content") == nil)
+        #expect(throws: CloudError.self) { try cache.store(Data("x".utf8), hash: "../../x", name: "doc.content") }
+    }
 }

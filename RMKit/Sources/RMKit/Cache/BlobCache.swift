@@ -31,6 +31,7 @@ public struct BlobCache: Sendable {
     }
 
     public func data(hash: String, name: String) -> Data? {
+        guard Entries.isHash(hash) else { return nil }
         let url = url(hash: hash, name: name)
         guard let data = try? Data(contentsOf: url) else { return nil }
         if Self.isEvictable(name: name) {
@@ -41,6 +42,7 @@ public struct BlobCache: Sendable {
     }
 
     public func store(_ data: Data, hash: String, name: String) throws {
+        guard Entries.isHash(hash) else { throw CloudError.malformed("not a hash: \(hash)") }
         let url = url(hash: hash, name: name)
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try data.write(to: url, options: .atomic)
@@ -50,16 +52,16 @@ public struct BlobCache: Sendable {
     public func evict() throws {
         let root = directory.appending(path: "lru")
         let keys: [URLResourceKey] = [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey]
-        guard let walker = FileManager.default.enumerator(at: root, includingPropertiesForKeys: keys) else { return }
+        guard let walker = FileManager.default.enumerator(at: root, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles]) else { return }
         var files: [(url: URL, date: Date, size: Int)] = []
         for case let url as URL in walker {
-            let values = try url.resourceValues(forKeys: Set(keys))
-            guard values.isRegularFile == true else { continue }
+            guard let values = try? url.resourceValues(forKeys: Set(keys)), values.isRegularFile == true else { continue }
             files.append((url, values.contentModificationDate ?? .distantPast, values.fileSize ?? 0))
         }
         var total = files.reduce(0) { $0 + $1.size }
         for file in files.sorted(by: { $0.date < $1.date }) where total > limit {
-            try FileManager.default.removeItem(at: file.url)
+            // a concurrent atomic write can make a file vanish mid-trim; don't abort the trim for it
+            try? FileManager.default.removeItem(at: file.url)
             total -= file.size
         }
     }

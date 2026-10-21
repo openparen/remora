@@ -93,6 +93,21 @@ import Testing
         #expect(tokens.value == 2)
     }
 
+    @Test func refusesAMalformedRootHash() async throws {
+        let (session, host) = StubProtocol.make { request in
+            switch request.url?.path() {
+            case "/token/json/2/user/new":
+                return (200, Data(jwt(["n": 1, "exp": Date().timeIntervalSince1970 + 3600]).utf8))
+            case "/sync/v4/root":
+                return (200, Data(#"{"hash":"../x","generation":1,"schemaVersion":4}"#.utf8))
+            default:
+                return (404, Data())
+            }
+        }
+        let cloud = CloudSession(deviceToken: "device-token", session: session, authHost: host, syncHost: host)
+        await #expect(throws: CloudError.self) { _ = try await cloud.root() }
+    }
+
     @Test func concurrent401sShareOneRefresh() async throws {
         let tokens = Locked(0)
         let firstToken = Locked<String?>(nil)

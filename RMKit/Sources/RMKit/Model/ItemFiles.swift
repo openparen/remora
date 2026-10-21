@@ -23,9 +23,13 @@ public struct DocumentContent: Decodable, Sendable {
     public var orientation: Orientation
     public var pageCount: Int?
     /// The legacy page list: page ids in order. `null` on a never-opened document.
-    public var pages: [String]?
+    /// A `nil` element is an unreadable page: it keeps its slot (and page number)
+    /// but has no id of its own.
+    public var pages: [String?]?
     /// Legacy: the zero-based source PDF page of each page, -1 for an inserted page.
-    public var redirectionPageMap: [Int]?
+    /// A `nil` element means that page has no source. Present but not an array
+    /// (some broken documents) means "no source pages", one `nil` per page.
+    public var redirectionPageMap: [Int?]?
     /// The newer page list, ordered by `idx`.
     public var cPages: [CPage]
     public var tags: [String]
@@ -34,7 +38,20 @@ public struct DocumentContent: Decodable, Sendable {
         case fileType, orientation, pageCount, pages, redirectionPageMap, cPages, tags
     }
 
-    private struct CPagesBox: Decodable { var pages: [CPage] }
+    /// Decodes one element of a list, or nil, so one bad element keeps its slot.
+    private struct Lenient<T: Decodable>: Decodable {
+        var value: T?
+        init(from decoder: Decoder) throws { value = try? decoder.singleValueContainer().decode(T.self) }
+    }
+
+    private struct CPagesBox: Decodable {
+        var pages: [CPage]
+        private enum Keys: String, CodingKey { case pages }
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: Keys.self)
+            pages = try c.decode([Lenient<CPage>].self, forKey: .pages).map { $0.value ?? CPage(id: nil, idx: nil) }
+        }
+    }
 
     /// A tag is a string in legacy content and `{name, timestamp}` in newer content.
     private struct Tag: Decodable {
@@ -54,13 +71,22 @@ public struct DocumentContent: Decodable, Sendable {
         fileType = try? c.decodeIfPresent(String.self, forKey: .fileType)
         orientation = (try? c.decodeIfPresent(String.self, forKey: .orientation)) == "landscape" ? .landscape : .portrait
         pageCount = try? c.decodeIfPresent(Int.self, forKey: .pageCount)
-        pages = try? c.decodeIfPresent([String].self, forKey: .pages)
-        redirectionPageMap = try? c.decodeIfPresent([Int].self, forKey: .redirectionPageMap)
+        let pagesLenient = (try? c.decodeIfPresent([Lenient<String>].self, forKey: .pages)) ?? nil
+        pages = pagesLenient?.map(\.value)
+        let redirLenient = (try? c.decodeIfPresent([Lenient<Int>].self, forKey: .redirectionPageMap)) ?? nil
+        if let redirLenient {
+            redirectionPageMap = redirLenient.map(\.value)
+        } else if c.contains(.redirectionPageMap), (try? c.decodeNil(forKey: .redirectionPageMap)) != true {
+            // present but not an array: no source pages, never identity
+            redirectionPageMap = Array(repeating: nil, count: pages?.count ?? 0)
+        } else {
+            redirectionPageMap = nil
+        }
         cPages = (try? c.decodeIfPresent(CPagesBox.self, forKey: .cPages))?.pages ?? []
         tags = ((try? c.decodeIfPresent([Tag].self, forKey: .tags)) ?? []).map(\.name)
     }
 
-    public init(orientation: Orientation = .portrait, pages: [String]? = nil, redirectionPageMap: [Int]? = nil, cPages: [CPage] = []) {
+    public init(orientation: Orientation = .portrait, pages: [String?]? = nil, redirectionPageMap: [Int?]? = nil, cPages: [CPage] = []) {
         self.orientation = orientation
         self.pages = pages
         self.redirectionPageMap = redirectionPageMap
