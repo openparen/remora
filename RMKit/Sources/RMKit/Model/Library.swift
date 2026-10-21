@@ -16,6 +16,12 @@ public struct LibraryItem: Sendable, Equatable, Identifiable {
     public let pageCount: Int?
 }
 
+public struct FolderNode: Identifiable, Hashable, Sendable {
+    public let id: String
+    public let name: String
+    public let children: [FolderNode]?
+}
+
 /// The account's whole tree at one root hash.
 public struct Library: Sendable {
     public let root: RootHash
@@ -38,6 +44,41 @@ public struct Library: Sendable {
             current = items[item.parent]
         }
         return names.reversed().joined(separator: "/")
+    }
+
+    /// The folder tree under `parent`, sorted by name, trash left out. A folder
+    /// without subfolders has `nil` children, which is what a SwiftUI outline wants.
+    public func folders(under parent: String = "") -> [FolderNode] {
+        var seen: Set<String> = [parent]
+        func level(_ parent: String) -> [FolderNode] {
+            children(of: parent).filter { $0.kind == .folder && seen.insert($0.id).inserted }.map { folder in
+                let below = level(folder.id)
+                return FolderNode(id: folder.id, name: folder.name, children: below.isEmpty ? nil : below)
+            }
+        }
+        return level(parent)
+    }
+
+    /// Documents and folders whose name, tag or folder path contains `query`,
+    /// name matches first, then tags, then paths. Trash and templates left out.
+    public func search(_ query: String) -> [LibraryItem] {
+        let query = query.trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty else { return [] }
+        func rank(_ item: LibraryItem) -> Int? {
+            if item.name.localizedCaseInsensitiveContains(query) { return 0 }
+            if item.tags.contains(where: { $0.localizedCaseInsensitiveContains(query) }) { return 1 }
+            if path(of: item.parent).localizedCaseInsensitiveContains(query) { return 2 }
+            return nil
+        }
+        var hits: [(item: LibraryItem, rank: Int)] = []
+        for item in items.values where item.kind != .template && !isInTrash(item.id) {
+            if let rank = rank(item) { hits.append((item, rank)) }
+        }
+        hits.sort { a, b in
+            if a.rank != b.rank { return a.rank < b.rank }
+            return a.item.name.localizedStandardCompare(b.item.name) == .orderedAscending
+        }
+        return hits.map(\.item)
     }
 
     /// In the trash, directly or under a trashed folder.

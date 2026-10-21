@@ -106,4 +106,14 @@ import Testing
         #expect(library.isInTrash("note"))
         #expect(!library.isInTrash("nonexistent"))
     }
+
+    @Test func foldersAndSearch() async throws {
+        let library = try await Library.build(
+            root: RootHash(hash: fakeHash(1), generation: 1, schemaVersion: 4), blobs: Self.store(Self.account()))
+        #expect(library.folders() == [FolderNode(id: "folder", name: "Work", children: nil)])
+        #expect(library.search("idea").map(\.id) == ["note"]) // by name
+        #expect(library.search("work").map(\.id) == ["folder", "note"]) // the folder by name, the note by path
+        #expect(library.search("T").map(\.id).contains("note")) // by tag
+        #expect(library.search("  ").isEmpty)
+    }
 }
