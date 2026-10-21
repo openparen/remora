@@ -333,8 +333,10 @@ the Plain ink preference.
   device or per account hasn't been measured.
 - **`deviceDesc` at pairing** is a fixed list in rmapi-js (`desktop-macos`,
   `desktop-windows`, …, `browser-chrome`). Remora registers as
-  `desktop-macos`. Whether the cloud treats that like the official desktop
-  app (device slots, or the desktop app being signed out) is unverified.
+  `desktop-macos`. **Verified 2026-10-21:** pairing as `desktop-macos` with a
+  code from `my.remarkable.com/device/desktop/connect` works. Whether it
+  costs a desktop-app slot (or signs the official desktop app out) is still
+  unobserved.
 - **How firmware 3 draws pencil.** The only official reference found shows
   1-bit stipple (firmware 2.x). M2 tuning should treat photos of the user's
   tablet as the truth.

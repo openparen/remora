@@ -17,8 +17,14 @@ fi
 out=${GOLDEN_OUT:-golden-out}
 status=0
 
-swift build --package-path RMKit -c release --product remora-cli
-cli=$(swift build --package-path RMKit -c release --show-bin-path)/remora-cli
+# REMORA_CLI picks a prebuilt binary: the one that paired owns the Keychain item,
+# and a checkout on a network share needs its build outside the tree
+if [ -n "${REMORA_CLI:-}" ]; then
+  cli=$REMORA_CLI
+else
+  swift build --package-path RMKit -c release --product remora-cli
+  cli=$(swift build --package-path RMKit -c release --show-bin-path)/remora-cli
+fi
 
 pages_file=$(mktemp)
 trap 'rm -f "$pages_file"' EXIT
