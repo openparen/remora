@@ -22,7 +22,7 @@ import Testing
 
     @Test func storeFetchesOnceThenServesFromDisk() async throws {
         let fetches = Locked(0)
-        let store = BlobStore(cache: BlobCache(directory: temporaryDirectory())) { _, _ in
+        let store = BlobStore(cache: BlobCache(directory: temporaryDirectory()), verifyHashes: false) { _, _ in
             fetches.update { $0 += 1 }
             return Data("x".utf8)
         }
@@ -47,5 +47,69 @@ import Testing
         try FileManager.default.createDirectory(at: cache.directory.appending(path: "keep"), withIntermediateDirectories: true)
         #expect(cache.data(hash: hash, name: "doc.content") == nil)
         #expect(throws: CloudError.self) { try cache.store(Data("x".utf8), hash: hash, name: "doc.content") }
+    }
+
+    @Test func concurrentRequestsForOneBlobShareAFetch() async throws {
+        let fetches = Locked(0)
+        let store = BlobStore(cache: BlobCache(directory: temporaryDirectory()), verifyHashes: false) { _, _ in
+            fetches.update { $0 += 1 }
+            try await Task.sleep(for: .milliseconds(50))
+            return Data("x".utf8)
+        }
+        defer { try? FileManager.default.removeItem(at: store.cache.directory) }
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            for _ in 0..<10 { group.addTask { _ = try await store.data(hash: fakeHash(1), name: "a.rm") } }
+            try await group.waitForAll()
+        }
+        #expect(fetches.value == 1)
+    }
+
+    @Test func atMostTheLimitOfFetchesRunAtOnce() async throws {
+        let running = Locked(0), peak = Locked(0)
+        let store = BlobStore(cache: BlobCache(directory: temporaryDirectory()), maxConcurrentFetches: 2, verifyHashes: false) { _, _ in
+            let now = running.update { $0 += 1; return $0 }
+            peak.update { $0 = max($0, now) }
+            try await Task.sleep(for: .milliseconds(30))
+            running.update { $0 -= 1 }
+            return Data("x".utf8)
+        }
+        defer { try? FileManager.default.removeItem(at: store.cache.directory) }
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            for n in 1...6 { group.addTask { _ = try await store.data(hash: fakeHash(n), name: "p\(n).rm") } }
+            try await group.waitForAll()
+        }
+        #expect(peak.value == 2)
+    }
+
+    @Test func bytesThatDoNotMatchTheirHashAreRefusedAndNotCached() async throws {
+        let store = BlobStore(cache: BlobCache(directory: temporaryDirectory())) { _, _ in Data("<html>login</html>".utf8) }
+        defer { try? FileManager.default.removeItem(at: store.cache.directory) }
+        await #expect(throws: CloudError.self) { try await store.data(hash: fakeHash(1), name: "a.content") }
+        #expect(store.cache.data(hash: fakeHash(1), name: "a.content") == nil)
+        // sha256("hello")
+        let hello = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+        let good = BlobStore(cache: BlobCache(directory: temporaryDirectory())) { _, _ in Data("hello".utf8) }
+        defer { try? FileManager.default.removeItem(at: good.cache.directory) }
+        #expect(try await good.data(hash: hello, name: "a.content") == Data("hello".utf8))
+    }
+
+    @Test func aFailedFetchIsTriedAgain() async throws {
+        let calls = Locked(0)
+        let store = BlobStore(cache: BlobCache(directory: temporaryDirectory()), verifyHashes: false) { _, _ in
+            let n = calls.update { $0 += 1; return $0 }
+            if n == 1 { throw URLError(.timedOut) }
+            return Data("x".utf8)
+        }
+        defer { try? FileManager.default.removeItem(at: store.cache.directory) }
+        await #expect(throws: URLError.self) { try await store.data(hash: fakeHash(1), name: "a.rm") }
+        #expect(try await store.data(hash: fakeHash(1), name: "a.rm") == Data("x".utf8))
+        #expect(calls.value == 2)
+    }
+
+    @Test func anEntryListThatDoesNotParseIsNotCached() async throws {
+        let store = BlobStore(cache: BlobCache(directory: temporaryDirectory())) { _, _ in Data("<html>login</html>".utf8) }
+        defer { try? FileManager.default.removeItem(at: store.cache.directory) }
+        await #expect(throws: CloudError.self) { try await store.entries(hash: fakeHash(1), id: "root") }
+        #expect(store.cache.data(hash: fakeHash(1), name: "root.docSchema") == nil)
     }
 }

@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 /// An opened document: its files, its content and its pages in order.
@@ -36,5 +37,17 @@ public struct Document: Sendable {
         guard let file = inkFile(page) else { return nil }
         let rm = try parseRM(try await blobs.data(hash: file.hash, name: file.id))
         return normalize(rm, orientation: content.orientation)
+    }
+
+    /// The page drawn at `scale` with its template under the ink. A blank page
+    /// (no ink file) is just its template. `template` is nil when the page names
+    /// one Remora doesn't draw; the caller shows `page.template` instead.
+    // ponytail: a blank page has no size of its own and is drawn at the rm2 size; Paper Pro pages share its 3:4 shape
+    public func render(_ page: PageRef, scale: Double, blobs: BlobStore) async throws -> (image: CGImage, template: PageTemplate?, drops: PageDrops) {
+        let ink = try await ink(page, blobs: blobs)
+            ?? NormalizedPage(strokes: [], drops: PageDrops(), geometry: PageGeometry(portrait: nil, orientation: content.orientation))
+        let template = PageTemplate(name: page.template, page: ink.geometry)
+        let image = try FlatRenderer.image(ink, scale: scale, template: template ?? .blank)
+        return (image, template, ink.drops)
     }
 }

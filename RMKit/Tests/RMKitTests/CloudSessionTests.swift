@@ -6,7 +6,8 @@ import Testing
     /// A fake cloud on one host: the token exchange, the root and one file.
     static func fakeCloud(
         rootStatuses: [Int] = [200],
-        tokenStatus: Locked<Int> = Locked(200)
+        tokenStatus: Locked<Int> = Locked(200),
+        cooldown: Duration = .zero
     ) -> (CloudSession, Locked<Int>) {
         let tokens = Locked(0)
         let roots = Locked(rootStatuses)
@@ -29,8 +30,18 @@ import Testing
                 return (404, Data())
             }
         }
-        let cloud = CloudSession(deviceToken: "device-token", session: session, authHost: host, syncHost: host)
+        let cloud = CloudSession(
+            deviceToken: "device-token", session: session, authHost: host, syncHost: host, failureCooldown: cooldown)
         return (cloud, tokens)
+    }
+
+    @Test func aFailedExchangeCoolsDownBeforeAskingAgain() async throws {
+        let status = Locked(429)
+        let (cloud, tokens) = Self.fakeCloud(tokenStatus: status, cooldown: .seconds(60))
+        await #expect(throws: CloudError.self) { try await cloud.root() }
+        status.update { $0 = 200 }
+        await #expect(throws: CloudError.self) { try await cloud.root() }
+        #expect(tokens.value == 1)
     }
 
     @Test func readsTheRoot() async throws {
@@ -134,5 +145,66 @@ import Testing
             try await group.waitForAll()
         }
         #expect(tokens.value == 2)
+    }
+
+    @Test func aTokenNearingExpiryIsKeptWhenItsRefreshFails() async throws {
+        let tokens = Locked(0)
+        let (session, host) = StubProtocol.make { request in
+            switch request.url?.path() {
+            case "/token/json/2/user/new":
+                let n = tokens.update { $0 += 1; return $0 }
+                guard n == 1 else { return (429, Data()) }
+                // valid for two more minutes: inside the five-minute early-refresh window
+                return (200, Data(jwt(["exp": Date().timeIntervalSince1970 + 120]).utf8))
+            default:
+                return (200, Data(#"{"hash":"\#(fakeHash(1))","generation":7,"schemaVersion":4}"#.utf8))
+            }
+        }
+        let cloud = CloudSession(deviceToken: "device-token", session: session, authHost: host, syncHost: host, failureCooldown: .seconds(60))
+        _ = try await cloud.root()
+        _ = try await cloud.root() // refresh fails with 429, the old token still works
+        _ = try await cloud.root() // cooling down: no new exchange, old token again
+        #expect(tokens.value == 2)
+    }
+
+    /// A cloud whose first token expires in two minutes, whose later exchanges
+    /// answer 429 after `delay`, and whose root answers `rootStatus` to the first token.
+    static func expiringCloud(delay: Duration = .zero, rootStatus: Int = 200) -> (CloudSession, Locked<Int>) {
+        let tokens = Locked(0)
+        let first = Locked<String?>(nil)
+        let (session, host) = StubProtocol.make { request in
+            switch request.url?.path() {
+            case "/token/json/2/user/new":
+                let n = tokens.update { $0 += 1; return $0 }
+                guard n == 1 else {
+                    if delay > .zero { Thread.sleep(forTimeInterval: Double(delay.components.attoseconds) / 1e18 + Double(delay.components.seconds)) }
+                    return (429, Data())
+                }
+                let token = jwt(["exp": Date().timeIntervalSince1970 + 120])
+                first.update { $0 = token }
+                return (200, Data(token.utf8))
+            default:
+                let status = request.value(forHTTPHeaderField: "Authorization") == "Bearer \(first.value ?? "")" ? rootStatus : 200
+                return (status, Data(#"{"hash":"\#(fakeHash(1))","generation":7,"schemaVersion":4}"#.utf8))
+            }
+        }
+        let cloud = CloudSession(deviceToken: "device-token", session: session, authHost: host, syncHost: host, failureCooldown: .seconds(60))
+        return (cloud, tokens)
+    }
+
+    @Test func everyWaiterKeepsTheOldTokenWhenItsRefreshFails() async throws {
+        let (cloud, tokens) = Self.expiringCloud(delay: .milliseconds(200))
+        _ = try await cloud.root()
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            for _ in 0..<8 { group.addTask { _ = try await cloud.root() } }
+            try await group.waitForAll()
+        }
+        #expect(tokens.value == 2)
+    }
+
+    @Test func aTokenThatGotA401IsNeverKept() async throws {
+        // the first token is rejected outright; its refresh is rate-limited
+        let (cloud, _) = Self.expiringCloud(rootStatus: 401)
+        await #expect(throws: CloudError.http(status: 429, body: "")) { try await cloud.root() }
     }
 }

@@ -12,6 +12,10 @@ struct KeychainTests {
         try keychain.set("two", account: "a")
         #expect(try keychain.get(account: "a") == "two")
         #expect(try keychain.accounts() == ["a"])
+        #expect(try keychain.label(account: "a") == nil)
+        try keychain.set("two", account: "a", label: "me@example.com")
+        #expect(try keychain.label(account: "a") == "me@example.com")
+        #expect(try keychain.get(account: "a") == "two")
         try keychain.delete(account: "a")
         #expect(try keychain.accounts() == [])
     }

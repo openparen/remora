@@ -16,6 +16,12 @@ public struct LibraryItem: Sendable, Equatable, Identifiable {
     public let pageCount: Int?
 }
 
+public struct FolderNode: Identifiable, Hashable, Sendable {
+    public let id: String
+    public let name: String
+    public let children: [FolderNode]?
+}
+
 /// The account's whole tree at one root hash.
 public struct Library: Sendable {
     public let root: RootHash
@@ -40,7 +46,57 @@ public struct Library: Sendable {
         return names.reversed().joined(separator: "/")
     }
 
+    /// The folder tree under `parent`, sorted by name, trash left out. A folder
+    /// without subfolders has `nil` children, which is what a SwiftUI outline wants.
+    public func folders(under parent: String = "") -> [FolderNode] {
+        var seen: Set<String> = [parent]
+        func level(_ parent: String) -> [FolderNode] {
+            children(of: parent).filter { $0.kind == .folder && seen.insert($0.id).inserted }.map { folder in
+                let below = level(folder.id)
+                return FolderNode(id: folder.id, name: folder.name, children: below.isEmpty ? nil : below)
+            }
+        }
+        return level(parent)
+    }
+
+    /// Documents and folders whose name, tag or folder path contains `query`,
+    /// name matches first, then tags, then paths. Trash and templates left out.
+    public func search(_ query: String) -> [LibraryItem] {
+        let query = query.trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty else { return [] }
+        func rank(_ item: LibraryItem) -> Int? {
+            if item.name.localizedCaseInsensitiveContains(query) { return 0 }
+            if item.tags.contains(where: { $0.localizedCaseInsensitiveContains(query) }) { return 1 }
+            if path(of: item.parent).localizedCaseInsensitiveContains(query) { return 2 }
+            return nil
+        }
+        var hits: [(item: LibraryItem, rank: Int)] = []
+        for item in items.values where item.kind != .template && !isInTrash(item.id) {
+            if let rank = rank(item) { hits.append((item, rank)) }
+        }
+        hits.sort { a, b in
+            if a.rank != b.rank { return a.rank < b.rank }
+            return a.item.name.localizedStandardCompare(b.item.name) == .orderedAscending
+        }
+        return hits.map(\.item)
+    }
+
+    /// In the trash, directly or under a trashed folder.
+    public func isInTrash(_ id: String) -> Bool {
+        var seen: Set<String> = []
+        var parent = items[id]?.parent
+        while let current = parent, seen.insert(current).inserted {
+            if current == "trash" { return true }
+            parent = items[current]?.parent
+        }
+        return false
+    }
+
     /// Read every item of `root`, reusing `previous` for items whose hash is unchanged.
+    /// An item that can't be read keeps its previous version and is listed in
+    /// `failures`. An error that would fail every request (auth, rate limit,
+    /// network: `CloudError.failsEverything`) stops the build and is thrown, so
+    /// the caller keeps its old library instead of a hollow new one.
     public static func build(
         root: RootHash,
         previous: Library? = nil,
@@ -73,7 +129,10 @@ public struct Library: Sendable {
             while let (id, result) = try await group.next() {
                 switch result {
                 case .success(let item): items[id] = item
-                case .failure(let error): failures[id] = "\(error)"
+                case .failure(let error):
+                    if CloudError.failsEverything(error) { throw error }
+                    failures[id] = "\(error)"
+                    if let old = previous?.items[id] { items[id] = old }
                 }
                 next()
             }

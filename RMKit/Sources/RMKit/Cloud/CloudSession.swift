@@ -25,17 +25,23 @@ public actor CloudSession {
     private let auth: AuthClient
     private let syncHostOverride: URL?
     private var current: Task<Authorized, Error>?
+    private let failureCooldown: Duration
+    private var lastFailure: (error: any Error, until: ContinuousClock.Instant)?
 
+    /// `failureCooldown`: after a failed token exchange, calls fail with the same
+    /// error for this long instead of asking again; the exchange is rate-limited.
     public init(
         deviceToken: String,
         session: URLSession = .shared,
         authHost: URL = CloudHosts.auth,
-        syncHost: URL? = nil
+        syncHost: URL? = nil,
+        failureCooldown: Duration = .seconds(30)
     ) {
         self.deviceToken = deviceToken
         http = HTTP(session: session)
         auth = AuthClient(session: session, host: authHost)
         syncHostOverride = syncHost
+        self.failureCooldown = failureCooldown
     }
 
     public func claims() async throws -> TokenClaims {
@@ -48,15 +54,30 @@ public actor CloudSession {
     /// `replacing` is the token that just got a 401: a newer one is reused,
     /// that one is refreshed once however many requests saw it fail.
     private func authorized(replacing stale: String? = nil) async throws -> Authorized {
+        // a token that is only nearing expiry still works; keep it if the refresh fails
+        var stillValid: Authorized?
         if let current {
             let value = try await current.value
             // another caller replaced the task while we waited: use theirs
             if self.current != current { return try await authorized(replacing: stale) }
             if value.token != stale, !value.isExpiring { return value }
+            if value.token != stale, (value.claims.expiry ?? .distantFuture) > Date() { stillValid = value }
         }
+        if let lastFailure, ContinuousClock.now < lastFailure.until {
+            if let stillValid { return stillValid }
+            throw lastFailure.error
+        }
+        // the fallback lives inside the shared task, so every waiter gets the kept token, not just this caller
+        let kept = stillValid
         let fresh = Task { [auth, deviceToken] in
-            let token = try await auth.session(deviceToken: deviceToken)
-            return Authorized(token: token, claims: try TokenClaims(jwt: token))
+            do {
+                let token = try await auth.session(deviceToken: deviceToken)
+                return Authorized(token: token, claims: try TokenClaims(jwt: token))
+            } catch {
+                self.exchangeFailed(error)
+                if let kept { return kept }
+                throw error
+            }
         }
         current = fresh
         do {
@@ -65,6 +86,10 @@ public actor CloudSession {
             if current == fresh { current = nil }
             throw error
         }
+    }
+
+    private func exchangeFailed(_ error: any Error) {
+        lastFailure = (error, ContinuousClock.now + failureCooldown)
     }
 
     private func send(_ build: (URL) -> URLRequest) async throws -> Data {

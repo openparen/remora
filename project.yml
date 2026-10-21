@@ -1,0 +1,39 @@
+name: Remora
+options:
+  bundleIdPrefix: io.github.gveres
+  deploymentTarget:
+    macOS: "26.0"
+packages:
+  RMKit:
+    path: RMKit
+targets:
+  Remora:
+    type: application
+    platform: macOS
+    sources: [App/Remora]
+    dependencies:
+      - package: RMKit
+        product: RMKit
+    info:
+      path: App/Remora/Info.plist
+      properties:
+        CFBundleDisplayName: Remora
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.productivity
+        CFBundleURLTypes:
+          - CFBundleURLName: io.github.gveres.remora
+            CFBundleURLSchemes: [rmr]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.gveres.remora
+        PRODUCT_NAME: Remora
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "6.0"
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "-"
+        DEVELOPMENT_TEAM: ""
+        ENABLE_HARDENED_RUNTIME: NO
+        ENABLE_APP_SANDBOX: NO
+        GENERATE_INFOPLIST_FILE: NO
