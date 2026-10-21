@@ -29,8 +29,11 @@ struct DocumentWindow: View {
                 ProgressView("Loading the library…")
                     .task(id: store.stillLoading) {
                         guard !store.stillLoading, !refreshedForMissing else { return }
-                        await store.refreshAll()
-                        refreshedForMissing = true
+                        // unstructured: starting the sync flips stillLoading, which would cancel this task
+                        Task {
+                            await store.refreshAll()
+                            refreshedForMissing = true
+                        }
                     }
             } else {
                 ContentUnavailableView("Document not found", systemImage: "questionmark.folder",
@@ -241,6 +244,7 @@ struct PageView: View {
                 problem = nil
                 return
             } catch FlatRenderer.RenderError.tooLarge {
+                if Task.isCancelled { return }
                 scale /= 2
             } catch is CancellationError {
                 return
@@ -250,6 +254,6 @@ struct PageView: View {
                 return
             }
         }
-        problem = "This page is too large to draw."
+        if !Task.isCancelled { problem = "This page is too large to draw." }
     }
 }

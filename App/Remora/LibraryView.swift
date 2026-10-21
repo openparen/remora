@@ -53,15 +53,15 @@ struct LibraryView: View {
                 .keyboardShortcut("r")
         }
         .sheet(isPresented: $pairing) { PairingSheet() }
-        .confirmationDialog("Remove \(removing?.label ?? "")?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), presenting: removing) { account in
+        .confirmationDialog("Remove this account?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), presenting: removing) { account in
             Button("Remove Account", role: .destructive) {
                 if place?.account == account.id { place = nil }
                 store.remove(account)
                 removing = nil
             }
             Button("Cancel", role: .cancel) { removing = nil }
-        } message: { _ in
-            Text("Remora forgets this account and its cached files. The documents stay in your reMarkable cloud.")
+        } message: { account in
+            Text("Remora forgets \(account.label) and its cached files. The documents stay in your reMarkable cloud.")
         }
         .frame(minWidth: 720, minHeight: 420)
         .onAppear {
@@ -90,6 +90,8 @@ struct LibraryView: View {
     @ViewBuilder private var detail: some View {
         if let problem = store.problem, store.accounts.isEmpty {
             ContentUnavailableView("Can't read accounts", systemImage: "lock", description: Text(problem))
+        } else if let problem = store.problem, place == nil {
+            Banner(problem)
         } else if store.accounts.isEmpty {
             ContentUnavailableView {
                 Label("No reMarkable account", systemImage: "person.crop.circle.badge.questionmark")

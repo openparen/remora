@@ -12,6 +12,8 @@ import RMKit
     private(set) var lastSynced: Date?
     /// Called with the email once an unlabelled account's label is looked up.
     @ObservationIgnored private let rememberLabel: (String) -> Void
+    /// The first load and refresh; cancelled when the account is removed or re-paired.
+    @ObservationIgnored var starting: Task<Void, Never>?
 
     init(id: String, label: String, sync: AccountSync, rememberLabel: @escaping (String) -> Void) {
         self.id = id
@@ -69,13 +71,18 @@ import RMKit
     func load() {
         guard !loaded else { return }
         defer { loaded = true }
-        do {
-            for id in try keychain.accounts() {
-                guard let token = try keychain.get(account: id) else { continue }
-                add(id: id, label: (try? keychain.label(account: id)) ?? id, session: CloudSession(deviceToken: token))
+        let denied = "Remora couldn't read its accounts from the Keychain. Relaunch Remora and allow access when macOS asks."
+        guard let ids = try? keychain.accounts() else {
+            problem = denied
+            return
+        }
+        for id in ids {
+            // one unreadable item mustn't hide the other accounts
+            guard let token = try? keychain.get(account: id) else {
+                problem = denied
+                continue
             }
-        } catch {
-            problem = "Remora couldn't read its accounts from the Keychain. Relaunch Remora and allow access when macOS asks."
+            add(id: id, label: (try? keychain.label(account: id)) ?? id, session: CloudSession(deviceToken: token))
         }
     }
 
@@ -89,6 +96,7 @@ import RMKit
         let session = CloudSession(deviceToken: token)
         let email = (try? await session.claims())?.email
         if let email { try? keychain.set(token, account: id, label: email) }
+        accounts.first { $0.id == id }?.starting?.cancel()
         accounts.removeAll { $0.id == id }
         add(id: id, label: email ?? id, session: session)
         problem = nil
@@ -96,6 +104,7 @@ import RMKit
 
     /// Forget an account: its token, and its cached files.
     func remove(_ account: AccountState) {
+        account.starting?.cancel()
         try? keychain.delete(account: account.id)
         try? FileManager.default.removeItem(at: BlobCache.directory(account: account.id).deletingLastPathComponent())
         accounts.removeAll { $0.id == account.id }
@@ -134,6 +143,6 @@ import RMKit
             try? keychain.set(token, account: id, label: email)
         }
         accounts.append(state)
-        Task { await state.start() }
+        state.starting = Task { await state.start() }
     }
 }
