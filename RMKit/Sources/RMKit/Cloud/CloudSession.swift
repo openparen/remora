@@ -67,26 +67,29 @@ public actor CloudSession {
             if let stillValid { return stillValid }
             throw lastFailure.error
         }
+        // the fallback lives inside the shared task, so every waiter gets the kept token, not just this caller
+        let kept = stillValid
         let fresh = Task { [auth, deviceToken] in
-            let token = try await auth.session(deviceToken: deviceToken)
-            return Authorized(token: token, claims: try TokenClaims(jwt: token))
+            do {
+                let token = try await auth.session(deviceToken: deviceToken)
+                return Authorized(token: token, claims: try TokenClaims(jwt: token))
+            } catch {
+                await self.exchangeFailed(error)
+                if let kept { return kept }
+                throw error
+            }
         }
         current = fresh
         do {
-            let value = try await fresh.value
-            lastFailure = nil
-            return value
+            return try await fresh.value
         } catch {
-            if current == fresh {
-                lastFailure = (error, ContinuousClock.now + failureCooldown)
-                if let stillValid {
-                    current = Task { stillValid }
-                    return stillValid
-                }
-                current = nil
-            }
+            if current == fresh { current = nil }
             throw error
         }
+    }
+
+    private func exchangeFailed(_ error: any Error) {
+        lastFailure = (error, ContinuousClock.now + failureCooldown)
     }
 
     private func send(_ build: (URL) -> URLRequest) async throws -> Data {
