@@ -6,12 +6,26 @@ public enum CloudError: Error, Equatable {
     case noSubscription
     case http(status: Int, body: String)
     case malformed(String)
+    /// Not in the cache, and the cloud is not being asked: offline mode.
+    case offline
 
     init(status: Int, body: String) {
         switch status {
         case 401: self = .unauthorized
         case 402, 403: self = .noSubscription
         default: self = .http(status: status, body: body)
+        }
+    }
+
+    /// True for errors that would fail every request alike: auth, subscription,
+    /// rate limiting, server or network trouble. Reading more items after one
+    /// only repeats it. `offline` is not one: it means "not cached", per item.
+    public static func failsEverything(_ error: Error) -> Bool {
+        switch error {
+        case CloudError.unauthorized, CloudError.noSubscription: true
+        case CloudError.http(let status, _): status == 429 || status >= 500
+        case is URLError: true
+        default: false
         }
     }
 }

@@ -21,7 +21,7 @@ struct LiveTests {
 
         let count = Int(environment["REMORA_LIVE_DOCS"] ?? "") ?? 3
         let notebooks = library.items.values
-            .filter { $0.kind == .notebook && $0.parent != "trash" }
+            .filter { $0.kind == .notebook && !library.isInTrash($0.id) }
             .sorted { ($0.lastModified ?? .distantPast) > ($1.lastModified ?? .distantPast) }
             .prefix(count)
         var rendered = 0

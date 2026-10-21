@@ -18,7 +18,7 @@ import Testing
     }
 
     static func store(_ blobs: [String: Data], fetched: Locked<[String]> = Locked([])) -> BlobStore {
-        BlobStore(cache: BlobCache(directory: temporaryDirectory())) { hash, name in
+        BlobStore(cache: BlobCache(directory: temporaryDirectory()), verifyHashes: false) { hash, name in
             fetched.update { $0.append(name) }
             guard let data = blobs[hash] else { throw CloudError.http(status: 404, body: name) }
             return data
@@ -71,5 +71,39 @@ import Testing
         let library = try await Library.build(root: root, blobs: Self.store(blobs))
         #expect(library.failures.keys.sorted() == ["note"])
         #expect(library.items["note"] == nil)
+    }
+
+    @Test func aSessionFailureStopsTheBuild() async throws {
+        let blobs = Self.account()
+        let store = BlobStore(cache: BlobCache(directory: temporaryDirectory()), verifyHashes: false) { hash, name in
+            if name == "note.docSchema" { throw CloudError.unauthorized }
+            guard let data = blobs[hash] else { throw CloudError.http(status: 404, body: name) }
+            return data
+        }
+        await #expect(throws: CloudError.unauthorized) {
+            try await Library.build(root: RootHash(hash: fakeHash(1), generation: 1, schemaVersion: 4), blobs: store)
+        }
+    }
+
+    @Test func aFailedItemKeepsItsPreviousVersion() async throws {
+        var blobs = Self.account()
+        let first = try await Library.build(
+            root: RootHash(hash: fakeHash(1), generation: 1, schemaVersion: 4), blobs: Self.store(blobs))
+        // the note changed (new hash 25), but its new entry list can't be read
+        blobs[fakeHash(3)] = Data("4\n0:.:2:0\n\(fakeHash(10)):0:folder:2:0\n\(fakeHash(25)):0:note:2:0\n".utf8)
+        let second = try await Library.build(
+            root: RootHash(hash: fakeHash(3), generation: 2, schemaVersion: 4), previous: first, blobs: Self.store(blobs))
+        #expect(second.items["note"] == first.items["note"])
+        #expect(second.failures.keys.sorted() == ["note"])
+    }
+
+    @Test func trashedFoldersTakeTheirContentsWithThem() async throws {
+        var blobs = Self.account()
+        blobs[fakeHash(11)] = Data(#"{"visibleName":"Work","parent":"trash","type":"CollectionType","pinned":false}"#.utf8)
+        let library = try await Library.build(
+            root: RootHash(hash: fakeHash(1), generation: 1, schemaVersion: 4), blobs: Self.store(blobs))
+        #expect(library.isInTrash("folder"))
+        #expect(library.isInTrash("note"))
+        #expect(!library.isInTrash("nonexistent"))
     }
 }

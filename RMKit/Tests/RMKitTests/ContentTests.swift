@@ -27,4 +27,12 @@ import Testing
         #expect(content.pageCount == nil)
         #expect(content.orientation == .portrait)
     }
+
+    @Test func metadataNeedsOnlyNameParentAndType() throws {
+        let meta = try JSONDecoder().decode(ItemMetadata.self, from: Data(#"{"visibleName":"N","parent":"","type":"DocumentType"}"#.utf8))
+        #expect(!meta.pinned)
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(ItemMetadata.self, from: Data(#"{"visibleName":"N","type":"DocumentType"}"#.utf8))
+        }
+    }
 }

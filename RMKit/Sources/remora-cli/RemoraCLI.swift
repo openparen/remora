@@ -48,12 +48,15 @@ struct RemoraCLI {
             try keychain.set(deviceToken, account: user)
             // the code is spent once register succeeds: keep the token even if the email lookup fails
             let email = (try? await CloudSession(deviceToken: deviceToken).claims())?.email
+            if let email { try? keychain.set(deviceToken, account: user, label: email) }
             print("paired \(email ?? user)")
         case ("accounts", 1):
-            for account in try keychain.accounts() { print(account) }
+            for account in try keychain.accounts() {
+                print("\(account)  \((try? keychain.label(account: account)) ?? "")")
+            }
         case ("ls", 1):
             let (_, library) = try await open(keychain)
-            let items = library.items.values.filter { $0.parent != "trash" && $0.kind != .template }
+            let items = library.items.values.filter { !library.isInTrash($0.id) && $0.kind != .template }
             for item in items.sorted(by: { library.path(of: $0.id) < library.path(of: $1.id) }) {
                 print("\(item.id)  \(item.kind.rawValue.padding(toLength: 8, withPad: " ", startingAt: 0))  \(library.path(of: item.id))")
             }

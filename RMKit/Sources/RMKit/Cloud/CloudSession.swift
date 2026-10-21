@@ -25,17 +25,23 @@ public actor CloudSession {
     private let auth: AuthClient
     private let syncHostOverride: URL?
     private var current: Task<Authorized, Error>?
+    private let failureCooldown: Duration
+    private var lastFailure: (error: any Error, until: ContinuousClock.Instant)?
 
+    /// `failureCooldown`: after a failed token exchange, calls fail with the same
+    /// error for this long instead of asking again; the exchange is rate-limited.
     public init(
         deviceToken: String,
         session: URLSession = .shared,
         authHost: URL = CloudHosts.auth,
-        syncHost: URL? = nil
+        syncHost: URL? = nil,
+        failureCooldown: Duration = .seconds(30)
     ) {
         self.deviceToken = deviceToken
         http = HTTP(session: session)
         auth = AuthClient(session: session, host: authHost)
         syncHostOverride = syncHost
+        self.failureCooldown = failureCooldown
     }
 
     public func claims() async throws -> TokenClaims {
@@ -54,15 +60,21 @@ public actor CloudSession {
             if self.current != current { return try await authorized(replacing: stale) }
             if value.token != stale, !value.isExpiring { return value }
         }
+        if let lastFailure, ContinuousClock.now < lastFailure.until { throw lastFailure.error }
         let fresh = Task { [auth, deviceToken] in
             let token = try await auth.session(deviceToken: deviceToken)
             return Authorized(token: token, claims: try TokenClaims(jwt: token))
         }
         current = fresh
         do {
-            return try await fresh.value
+            let value = try await fresh.value
+            lastFailure = nil
+            return value
         } catch {
-            if current == fresh { current = nil }
+            if current == fresh {
+                current = nil
+                lastFailure = (error, ContinuousClock.now + failureCooldown)
+            }
             throw error
         }
     }

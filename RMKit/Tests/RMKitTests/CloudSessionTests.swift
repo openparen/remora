@@ -6,7 +6,8 @@ import Testing
     /// A fake cloud on one host: the token exchange, the root and one file.
     static func fakeCloud(
         rootStatuses: [Int] = [200],
-        tokenStatus: Locked<Int> = Locked(200)
+        tokenStatus: Locked<Int> = Locked(200),
+        cooldown: Duration = .zero
     ) -> (CloudSession, Locked<Int>) {
         let tokens = Locked(0)
         let roots = Locked(rootStatuses)
@@ -29,8 +30,18 @@ import Testing
                 return (404, Data())
             }
         }
-        let cloud = CloudSession(deviceToken: "device-token", session: session, authHost: host, syncHost: host)
+        let cloud = CloudSession(
+            deviceToken: "device-token", session: session, authHost: host, syncHost: host, failureCooldown: cooldown)
         return (cloud, tokens)
+    }
+
+    @Test func aFailedExchangeCoolsDownBeforeAskingAgain() async throws {
+        let status = Locked(429)
+        let (cloud, tokens) = Self.fakeCloud(tokenStatus: status, cooldown: .seconds(60))
+        await #expect(throws: CloudError.self) { try await cloud.root() }
+        status.update { $0 = 200 }
+        await #expect(throws: CloudError.self) { try await cloud.root() }
+        #expect(tokens.value == 1)
     }
 
     @Test func readsTheRoot() async throws {

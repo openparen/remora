@@ -40,7 +40,22 @@ public struct Library: Sendable {
         return names.reversed().joined(separator: "/")
     }
 
+    /// In the trash, directly or under a trashed folder.
+    public func isInTrash(_ id: String) -> Bool {
+        var seen: Set<String> = []
+        var parent = items[id]?.parent
+        while let current = parent, seen.insert(current).inserted {
+            if current == "trash" { return true }
+            parent = items[current]?.parent
+        }
+        return false
+    }
+
     /// Read every item of `root`, reusing `previous` for items whose hash is unchanged.
+    /// An item that can't be read keeps its previous version and is listed in
+    /// `failures`. An error that would fail every request (auth, rate limit,
+    /// network: `CloudError.failsEverything`) stops the build and is thrown, so
+    /// the caller keeps its old library instead of a hollow new one.
     public static func build(
         root: RootHash,
         previous: Library? = nil,
@@ -73,7 +88,10 @@ public struct Library: Sendable {
             while let (id, result) = try await group.next() {
                 switch result {
                 case .success(let item): items[id] = item
-                case .failure(let error): failures[id] = "\(error)"
+                case .failure(let error):
+                    if CloudError.failsEverything(error) { throw error }
+                    failures[id] = "\(error)"
+                    if let old = previous?.items[id] { items[id] = old }
                 }
                 next()
             }

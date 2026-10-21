@@ -5,7 +5,8 @@ public enum Orientation: String, Sendable {
     case portrait, landscape
 }
 
-/// `<id>.metadata`
+/// `<id>.metadata`. Name, parent and type are required: without them the item
+/// can't be placed. The rest is read leniently.
 public struct ItemMetadata: Decodable, Sendable {
     public var visibleName: String
     public var parent: String
@@ -14,6 +15,17 @@ public struct ItemMetadata: Decodable, Sendable {
     public var pinned: Bool
     /// Milliseconds since 1970, as a string.
     public var lastModified: String?
+
+    private enum Keys: String, CodingKey { case visibleName, parent, type, pinned, lastModified }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: Keys.self)
+        visibleName = try c.decode(String.self, forKey: .visibleName)
+        parent = try c.decode(String.self, forKey: .parent)
+        type = try c.decode(String.self, forKey: .type)
+        pinned = (try? c.decodeIfPresent(Bool.self, forKey: .pinned)) ?? false
+        lastModified = try? c.decodeIfPresent(String.self, forKey: .lastModified)
+    }
 }
 
 /// `<id>.content`, read leniently: a field of an unexpected shape is dropped,

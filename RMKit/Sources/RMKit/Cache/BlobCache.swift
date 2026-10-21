@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// Content-addressed blobs on disk. A hash names its bytes forever, so nothing
@@ -68,26 +69,72 @@ public struct BlobCache: Sendable {
 }
 
 /// Cache in front of a fetch. The fetch is a closure so tests and offline mode
-/// can stand in for the cloud.
+/// can stand in for the cloud. Concurrent requests for one hash share a fetch,
+/// and at most `maxConcurrentFetches` run at once, so a screen of thumbnails
+/// can't flood the cloud.
 public struct BlobStore: Sendable {
     public typealias Fetch = @Sendable (_ hash: String, _ name: String) async throws -> Data
 
     public let cache: BlobCache
     let fetch: Fetch
+    let verifyHashes: Bool
+    private let gate: FetchGate
 
-    public init(cache: BlobCache, fetch: @escaping Fetch) {
+    /// `verifyHashes` checks each file against its name before caching it, so a
+    /// captive portal or proxy can't plant bytes under a hash forever. Entry
+    /// lists are exempt: schema 3 hashes them as their children's hashes.
+    public init(cache: BlobCache, maxConcurrentFetches: Int = 8, verifyHashes: Bool = true, fetch: @escaping Fetch) {
         self.cache = cache
         self.fetch = fetch
+        self.verifyHashes = verifyHashes
+        gate = FetchGate(limit: maxConcurrentFetches)
     }
 
     public func data(hash: String, name: String) async throws -> Data {
         if let data = cache.data(hash: hash, name: name) { return data }
-        let data = try await fetch(hash, name)
-        try cache.store(data, hash: hash, name: name)
-        return data
+        return try await gate.run(key: hash) { [cache, fetch, verifyHashes] in
+            let data = try await fetch(hash, name)
+            if verifyHashes, !name.hasSuffix(".docSchema") {
+                let actual = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+                guard actual == hash else { throw CloudError.malformed("\(name) does not match its hash") }
+            }
+            try cache.store(data, hash: hash, name: name)
+            return data
+        }
     }
 
     public func entries(hash: String, id: String) async throws -> [Entry] {
         try Entries.parse(try await data(hash: hash, name: "\(id).docSchema"))
+    }
+}
+
+/// Shares one in-flight task per key and bounds how many run at once.
+actor FetchGate {
+    private let limit: Int
+    private var running = 0
+    private var waiting: [CheckedContinuation<Void, Never>] = []
+    private var inFlight: [String: Task<Data, Error>] = [:]
+
+    init(limit: Int) {
+        precondition(limit > 0)
+        self.limit = limit
+    }
+
+    func run(key: String, _ work: @escaping @Sendable () async throws -> Data) async throws -> Data {
+        if let task = inFlight[key] { return try await task.value }
+        let task = Task { try await self.limited(work) }
+        inFlight[key] = task
+        defer { inFlight[key] = nil }
+        return try await task.value
+    }
+
+    private func limited(_ work: @Sendable () async throws -> Data) async throws -> Data {
+        while running >= limit { await withCheckedContinuation { waiting.append($0) } }
+        running += 1
+        defer {
+            running -= 1
+            if !waiting.isEmpty { waiting.removeFirst().resume() }
+        }
+        return try await work()
     }
 }
