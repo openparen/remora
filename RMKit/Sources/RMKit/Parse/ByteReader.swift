@@ -23,7 +23,9 @@ final class ByteReader {
     func seek(_ to: Int) { offset = to }
 
     private func take(_ count: Int) throws -> Int {
-        guard count >= 0, offset + count <= boundary else { throw RMParseError.truncated }
+        // compares against `boundary - offset` rather than `offset + count` so a
+        // hostile huge `count` can't overflow the addition
+        guard count >= 0, count <= boundary - offset else { throw RMParseError.truncated }
         defer { offset += count }
         return offset
     }
@@ -133,7 +135,8 @@ final class ByteReader {
 
     func string(_ index: UInt64) throws -> String {
         try subblock(index) {
-            let length = Int(try varuint())
+            // a hostile file's varuint can exceed Int64.max; Int(_:) would trap
+            guard let length = Int(exactly: try varuint()) else { throw RMParseError.truncated }
             _ = try u8() // is-ascii flag
             return String(decoding: try raw(length), as: UTF8.self)
         }

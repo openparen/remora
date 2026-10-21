@@ -19,8 +19,12 @@ public enum SVG {
     static func round(_ value: Double, _ decimals: Int, _ what: String) throws -> Double {
         guard value.isFinite, abs(value) <= maxMagnitude else { throw Error.nonFinite(what) }
         let scale = pow(10, Double(decimals))
-        // Math.round is floor(x + 0.5); `+ 0` turns -0 into 0
-        return (value * scale + 0.5).rounded(.down) / scale + 0
+        // Math.round is floor(x) + (fraction >= 0.5 ? 1 : 0), not floor(x + 0.5):
+        // adding 0.5 before flooring loses precision right at the .5 boundary for
+        // some doubles that floor(x) + fraction comparison gets right.
+        // `+ 0` turns -0 into 0.
+        let f = (value * scale).rounded(.down)
+        return ((value * scale - f >= 0.5) ? f + 1 : f) / scale + 0
     }
 
     static func coord(_ value: Double, _ what: String) throws -> Double {
@@ -29,7 +33,7 @@ public enum SVG {
 
     /// JavaScript's `String(n)` for the values this file produces.
     static func js(_ value: Double) -> String {
-        if value == value.rounded(.towardZero), abs(value) < 1e15 { return String(Int64(value)) }
+        if value == value.rounded(.towardZero), abs(value) < 1e18 { return String(Int64(value)) }
         return "\(value)"
     }
 
@@ -93,7 +97,7 @@ public enum SVG {
             let runs = try runs(stroke.points)
             if runs.isEmpty { continue }
             let color = stroke.style.color
-            guard color.count == 7, color.hasPrefix("#"), UInt32(color.dropFirst(), radix: 16) != nil else {
+            guard color.count == 7, color.hasPrefix("#"), color.dropFirst().allSatisfy(\.isHexDigit) else {
                 throw Error.badColor(color)
             }
             let opacity = max(try round(stroke.style.opacity, opacityDecimals, "opacity"), minOpacity)

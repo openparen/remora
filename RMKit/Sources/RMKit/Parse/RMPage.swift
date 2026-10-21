@@ -55,6 +55,7 @@ public enum RMParseError: Error, Equatable {
     case subblockNotConsumed(index: UInt64)
     case unknownPen(Int)
     case unknownColor(Int)
+    case unexpectedItemType(found: UInt8, wanted: UInt8)
 }
 
 let rmHeaderLength = 43

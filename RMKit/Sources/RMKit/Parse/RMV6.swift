@@ -10,7 +10,11 @@ enum RMV6 {
         var scene = SceneBuilder()
         var unreadable = 0
         while !reader.atEnd {
-            if reader.remaining < 8 { break }
+            if reader.remaining < 8 {
+                // a trailing partial block header: real bytes, but not a whole block
+                unreadable += 1
+                break
+            }
             let length = Int(try reader.u32())
             _ = try reader.u8() // reserved
             _ = try reader.u8() // min version
@@ -95,11 +99,13 @@ private struct SceneBuilder {
         let right = try r.id(4)
         _ = try r.int(5) // deleted length
         guard r.hasTag(6, .length4) else { return nil } // a deleted item has no value
-        let found: Value? = try r.subblock(6, allowTrailing: true) {
-            guard try r.u8() == itemType else { return nil }
+        let found: Value = try r.subblock(6, allowTrailing: true) {
+            let foundType = try r.u8()
+            guard foundType == itemType else {
+                throw RMParseError.unexpectedItemType(found: foundType, wanted: itemType)
+            }
             return try value()
         }
-        guard let found else { return nil }
         return (parent, Child(itemID: itemID, left: left, right: right, value: found))
     }
 
@@ -142,19 +148,30 @@ private struct SceneBuilder {
             points: points, id: nil, hidden: false)
     }
 
+    /// Groups past this nesting are not walked; real pages nest 1-2 levels, so
+    /// this is only ever reached by a hostile or corrupted file.
+    private static let maxWalkDepth = 64
+
     /// Flatten the tree back to front. The root holds layers; a hidden layer
-    /// hides everything under it.
+    /// hides everything under it. The root's own `visible`, if a file sets
+    /// one, is not honoured, matching rm2agent: only layers below the root
+    /// can be hidden.
     func page(unreadableBlocks: Int) -> RMPage {
         var strokes: [RawStroke] = []
         var visited: Set<CrdtID> = []
-        func walk(_ id: CrdtID, hidden: Bool, groupsOnly: Bool) {
+        var skippedForDepth = 0
+        func walk(_ id: CrdtID, hidden: Bool, groupsOnly: Bool, depth: Int) {
+            guard depth <= Self.maxWalkDepth else {
+                skippedForDepth += 1
+                return
+            }
             guard let node = nodes[id], visited.insert(id).inserted else { return }
-            let hidden = hidden || node.visible == false
+            let hidden = id == .root ? hidden : (hidden || node.visible == false)
             let ordered = Toposort.order(node.children, id: \.itemID, left: \.left, right: \.right)
             for child in ordered {
                 switch child.value {
                 case .group(let group):
-                    walk(group, hidden: hidden, groupsOnly: false)
+                    walk(group, hidden: hidden, groupsOnly: false, depth: depth + 1)
                 case .line(var stroke) where !groupsOnly:
                     stroke.id = child.itemID
                     stroke.hidden = hidden
@@ -164,7 +181,9 @@ private struct SceneBuilder {
                 }
             }
         }
-        walk(.root, hidden: false, groupsOnly: true)
-        return RMPage(version: 6, strokes: strokes, paperSize: paperSize, unreadableBlocks: unreadableBlocks)
+        walk(.root, hidden: false, groupsOnly: true, depth: 0)
+        return RMPage(
+            version: 6, strokes: strokes, paperSize: paperSize,
+            unreadableBlocks: unreadableBlocks + skippedForDepth)
     }
 }

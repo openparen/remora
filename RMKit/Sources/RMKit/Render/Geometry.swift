@@ -11,8 +11,10 @@ public struct PageGeometry: Sendable, Equatable {
     public let orientation: Orientation
 
     /// `portrait` is the page's native portrait size (a v6 `paperSize`).
+    /// A non-positive size is treated as absent, not as a zero- or negative-size page.
     public init(portrait: PaperSize?, orientation: Orientation) {
-        let size = portrait ?? Self.defaultScreen
+        let declared = portrait.flatMap { $0.width > 0 && $0.height > 0 ? $0 : nil }
+        let size = declared ?? Self.defaultScreen
         let short = Double(size.width), long = Double(size.height)
         width = orientation == .landscape ? long : short
         height = orientation == .landscape ? short : long
