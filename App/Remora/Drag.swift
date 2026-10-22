@@ -28,7 +28,7 @@ extension RemoraLink {
     }
 
     /// A titled link for rich text.
-    func html(title: String) -> String {
+    private func html(title: String) -> String {
         // without a charset AppKit reads the fragment as Latin-1 and garbles "ő"
         "<meta charset=\"utf-8\"><a href=\"\(url.absoluteString)\">\(Self.escapeHTML(title))</a>"
     }
@@ -54,6 +54,7 @@ struct DocumentDragHandle: ToolbarContent {
                 .onDrag { item.link.itemProvider(title: item.dragTitle) }
                 .help("Drag into another app for a link to this document")
                 .accessibilityLabel("Link to \(item.name)")
+                .accessibilityAction(named: "Copy Link") { Clipboard.copy(item.link.url.absoluteString) }
         }
     }
 }
