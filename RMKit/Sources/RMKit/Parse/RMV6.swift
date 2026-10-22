@@ -62,7 +62,8 @@ private struct SceneBuilder {
 
     var nodes: [CrdtID: Node] = [CrdtID.root: Node()]
     var paperSize: PaperSize?
-    var text: RootText?
+    /// The last root text block, laid out only once the whole file is read.
+    var text: RootText.Source?
 
     mutating func read(blockType: UInt8, version: UInt8, from r: ByteReader) throws {
         switch blockType {
@@ -71,14 +72,16 @@ private struct SceneBuilder {
             _ = try r.lww(2) { try r.string(2) }
             let visible = try r.lww(3) { try r.bool(2) }
             nodes[node, default: Node()].visible = visible
+            // rmscene's tree takes the latest block whole: one without an anchor clears it
+            var anchor: CrdtID?, originX = 0.0
             if r.hasTag(7, .length4) {
-                let anchor = try r.lww(7) { try r.id(2) }
+                anchor = try r.lww(7) { try r.id(2) }
                 _ = try r.subblock(8, allowTrailing: true) {} // anchor type
                 _ = try r.subblock(9, allowTrailing: true) {} // anchor threshold
-                let originX = try r.lww(10) { try r.float(2) }
-                nodes[node, default: Node()].anchor = anchor
-                nodes[node, default: Node()].anchorOriginX = Double(originX)
+                originX = Double(try r.lww(10) { try r.float(2) })
             }
+            nodes[node, default: Node()].anchor = anchor
+            nodes[node, default: Node()].anchorOriginX = originX
         case 0x07: // root text: the page's typed text
             text = try Self.rootText(r)
         case 0x04: // group item: a layer placed in its parent
@@ -169,7 +172,7 @@ private struct SceneBuilder {
     }
 
     /// rmscene `RootTextBlock`: text items, paragraph styles, then the box's position and width.
-    private static func rootText(_ r: ByteReader) throws -> RootText {
+    private static func rootText(_ r: ByteReader) throws -> RootText.Source {
         _ = try r.id(1) // block id, always (0, 0)
         var items: [RootText.Item] = []
         var styles: [CrdtID: ParagraphStyle] = [:]
@@ -218,7 +221,7 @@ private struct SceneBuilder {
         }
         let (x, y) = try r.subblock(3) { (try r.f64(), try r.f64()) }
         let width = Double(try r.float(4))
-        return try RootText(items: items, styles: styles, x: x, y: y, width: width)
+        return RootText.Source(items: items, styles: styles, x: x, y: y, width: width)
     }
 
     /// A list's length; each entry takes at least a byte, so one past the bytes left is hostile.
@@ -259,12 +262,23 @@ private struct SceneBuilder {
     ///
     /// A group anchored to the text moves with its anchor character: it is
     /// offset by (its origin x, the character's laid-out y), and nested groups
-    /// add up, as rmc draws them.
+    /// add up, as rmc draws them. Highlights take the same offset; that is
+    /// unverified, no sample has a highlight in an anchored group.
     func page(unreadableBlocks: Int) -> RMPage {
         var strokes: [RawStroke] = []
         var highlights: [RawHighlight] = []
         var visited: Set<CrdtID> = []
         var skippedForDepth = 0
+        var unreadableText = 0
+        var text: RootText?
+        do {
+            text = try self.text.map(RootText.init)
+        } catch {
+            unreadableText = 1
+        }
+        // ponytail: the portrait height; a landscape page's bottom anchor needs the
+        // document's orientation, which only normalize knows. Only matters for an
+        // anchored group on a page without typed text, which no sample has.
         let anchors = RootText.anchors(text, pageHeight: Double((paperSize ?? PageGeometry.defaultScreen).height))
         func walk(_ id: CrdtID, hidden: Bool, groupsOnly: Bool, depth: Int, offset: (x: Double, y: Double)) {
             guard depth <= Self.maxWalkDepth else {
@@ -300,6 +314,6 @@ private struct SceneBuilder {
         walk(.root, hidden: false, groupsOnly: true, depth: 0, offset: (0, 0))
         return RMPage(
             version: 6, strokes: strokes, paperSize: paperSize,
-            unreadableBlocks: unreadableBlocks + skippedForDepth, highlights: highlights, text: text)
+            unreadableBlocks: unreadableBlocks + skippedForDepth + unreadableText, highlights: highlights, text: text)
     }
 }

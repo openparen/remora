@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import Testing
 @testable import RMKit
@@ -120,15 +121,84 @@ import Testing
         #expect(page.unreadableBlocks > 0)
     }
 
-    /// A 0x07 block body: `count` then `items` as the text list, no styles, a zero box.
-    private func rootTextBody(items: [UInt8], count: UInt64) -> [UInt8] {
+    /// A 0x07 block body: `count` then `items` as the text list, `styles` as
+    /// (character, code) pairs, a zero box.
+    private func rootTextBody(items: [UInt8], count: UInt64, styles styleList: [(CrdtID, UInt8)] = []) -> [UInt8] {
         let itemList = subblockHeaderBytes(1, length: varuintBytes(count).count + items.count) + varuintBytes(count) + items
         let texts = subblockHeaderBytes(1, length: itemList.count) + itemList
-        let noStyles = subblockHeaderBytes(1, length: 1) + [0]
-        let styles = subblockHeaderBytes(2, length: noStyles.count) + noStyles
+        let entries = styleList.flatMap { char, code in
+            [char.author] + varuintBytes(char.counter) + idBytes(1, CrdtID(author: 1, counter: 1))
+                + subblockHeaderBytes(2, length: 2) + [17, code]
+        }
+        let styleBlock = varuintBytes(UInt64(styleList.count)) + entries
+        let styleSub = subblockHeaderBytes(1, length: styleBlock.count) + styleBlock
+        let styles = subblockHeaderBytes(2, length: styleSub.count) + styleSub
         let box = subblockHeaderBytes(3, length: 16) + [UInt8](repeating: 0, count: 16)
         return idBytes(1, .end) + subblockHeaderBytes(2, length: texts.count + styles.count) + texts + styles
             + box + intBytes(4, 0)
+    }
+
+    /// One text item: `text`, or a run of `deleted` characters.
+    private func textItem(_ id: CrdtID, left: CrdtID = .end, text: String = "", deleted: UInt32 = 0) -> [UInt8] {
+        var fields = idBytes(2, id) + idBytes(3, left) + idBytes(4, .end) + intBytes(5, deleted)
+        if !text.isEmpty {
+            let string = varuintBytes(UInt64(text.utf8.count)) + [1] + Array(text.utf8)
+            fields += subblockHeaderBytes(6, length: string.count) + string
+        }
+        return subblockHeaderBytes(0, length: fields.count) + fields
+    }
+
+    /// Only the last text block is laid out, so earlier ones cost their bytes,
+    /// not their characters: neither a run past the cap nor runs at it count.
+    @Test func onlyTheLastTextBlockIsExpanded() throws {
+        var data = v6Header()
+        for i in 0..<20 {
+            let run = UInt32(i < 10 ? RootText.maxChars + 1 : RootText.maxChars)
+            data.append(contentsOf: blockBytes(type: 0x07, body: rootTextBody(items: textItem(CrdtID(author: 1, counter: 1), deleted: run), count: 1)))
+        }
+        data.append(contentsOf: blockBytes(type: 0x07, body: rootTextBody(items: textItem(CrdtID(author: 1, counter: 1), text: "A"), count: 1)))
+        let start = ContinuousClock.now
+        let page = try parseRM(data)
+        #expect(ContinuousClock.now - start < .seconds(1))
+        #expect(page.unreadableBlocks == 0)
+        #expect(page.text?.paragraphs.map(\.text) == ["A"])
+    }
+
+    /// A style code past the known ones reads as plain, as in rmscene.
+    @Test func anUnknownParagraphStyleIsPlain() throws {
+        var data = v6Header()
+        let body = rootTextBody(items: textItem(CrdtID(author: 1, counter: 1), text: "A"), count: 1, styles: [(.end, 9)])
+        data.append(contentsOf: blockBytes(type: 0x07, body: body))
+        let page = try parseRM(data)
+        #expect(page.text?.paragraphs.map(\.style) == [.plain])
+    }
+
+    /// A run whose character ids would pass the counter's top is unreadable, not a trap.
+    @Test func aTextRunPastTheLastIdIsUnreadable() throws {
+        var data = v6Header()
+        let item = textItem(CrdtID(author: 1, counter: .max - 1), text: "abc")
+        data.append(contentsOf: blockBytes(type: 0x07, body: rootTextBody(items: item, count: 1)))
+        let page = try parseRM(data)
+        #expect(page.unreadableBlocks == 1)
+        #expect(page.text == nil)
+    }
+
+    /// A later tree-node block without anchor fields unanchors the group.
+    @Test func aTreeNodeWithoutAnAnchorClearsIt() throws {
+        func lww(_ tagIndex: UInt64, _ value: [UInt8]) -> [UInt8] {
+            let body = idBytes(1, CrdtID(author: 1, counter: 999)) + value
+            return subblockHeaderBytes(tagIndex, length: body.count) + body
+        }
+        let label = varuintBytes(1) + [1] + Array("g".utf8)
+        let plain = idBytes(1, CrdtID(author: 0, counter: 20))
+            + lww(2, subblockHeaderBytes(2, length: label.count) + label)
+            + lww(3, varuintBytes(2 << 4 | 0x1) + [1])
+        var data = try Fixtures.anchors("nested-anchors")
+        data.append(contentsOf: blockBytes(type: 0x02, version: 2, body: plain))
+        let page = try parseRM(data)
+        #expect(page.unreadableBlocks == 0)
+        let offsets = Dictionary(uniqueKeysWithValues: page.strokes.map { ($0.points[0].x, [$0.anchorOffset.x, $0.anchorOffset.y]) })
+        #expect(offsets == [1: [0, 0], 2: [5, 482], 3: [7, 0]])
     }
 
     /// A deleted run claiming four billion characters must not be expanded.
@@ -250,6 +320,34 @@ import Testing
         let ink = normalize(page, orientation: .portrait)
         let point = try #require(ink.strokes.first { $0.id == first.id }?.points.first)
         #expect(point.x == first.points[0].x - 464 + 702 && point.y == first.points[0].y + 146)
+    }
+
+    /// rmscene + rmc made this page (see Fixtures/anchors): a group anchored to a
+    /// deleted character holding one anchored to "Y", and one anchored to an id
+    /// the text doesn't have. Offsets are rmc's for the strokes.
+    @Test func anchorsFollowRmcThroughDeletedCharsNestingAndUnknownIds() throws {
+        let page = try parseRM(try Fixtures.anchors("nested-anchors"))
+        #expect(page.unreadableBlocks == 0)
+        let text = try #require(page.text)
+        #expect(text.paragraphs.map(\.text) == ["Hi", "Yo"])
+        #expect(text.paragraphs.map(\.style) == [.plain, .heading])
+        #expect(text.paragraphs[0].charIDs.count == 5) // "Hi" and three deleted
+        let offsets = Dictionary(uniqueKeysWithValues: page.strokes.map { ($0.points[0].x, [$0.anchorOffset.x, $0.anchorOffset.y]) })
+        #expect(offsets == [1: [10, 412], 2: [15, 894], 3: [7, 0]])
+        // ours, not rmc's (it draws no highlights): a highlight moves with its group
+        #expect(page.highlights.map { [$0.anchorOffset.x, $0.anchorOffset.y] } == [[10, 412]])
+        let ink = normalize(page, orientation: .portrait)
+        #expect(ink.highlights.first?.rects.first?.origin == CGPoint(x: 4 + 10 + 702, y: 6 + 412))
+    }
+
+    @Test func everyParagraphStartAndTheTextsEndsAreAnchors() throws {
+        let text = try #require(try parseRM(try Fixtures.anchors("nested-anchors")).text)
+        let anchors = text.anchors()
+        #expect(anchors[.end] == 412) // the first paragraph opens without a newline
+        #expect(anchors[CrdtID(author: 1, counter: 30)] == 482) // the newline opening "Yo"
+        #expect(anchors[RootText.bottomAnchor] == 632) // under the heading's 150
+        #expect(anchors[RootText.topAnchor] == 500 + 33.59375)
+        #expect(RootText.anchors(nil, pageHeight: 1872) == [RootText.topAnchor: 0, RootText.bottomAnchor: 1872])
     }
 
     @Test func normalizeLaysOutOneBaselinePerParagraph() throws {

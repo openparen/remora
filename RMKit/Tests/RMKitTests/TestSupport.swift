@@ -95,6 +95,11 @@ enum Fixtures {
         try Data(contentsOf: rmscene.appending(path: "\(name).\(ext)"))
     }
 
+    /// A synthetic page made with rmscene by the script next to it, which says how.
+    static func anchors(_ name: String) throws -> Data {
+        try Data(contentsOf: Bundle.module.resourceURL!.appending(path: "Fixtures/anchors/\(name).rm"))
+    }
+
     /// A v5 file: one layer, one ballpoint stroke of two points.
     static func v5() -> Data {
         var data = Data("reMarkable .lines file, version=5".padding(toLength: 43, withPad: " ", startingAt: 0).utf8)

@@ -41,6 +41,8 @@ public struct RootText: Sendable, Equatable {
     /// Where the tablet puts the top anchor below `y`: a stroke-for-stroke match
     /// of rmscene's `Lines_v2.rm` and its firmware-migrated `Lines_v2_updated.rm`
     /// (rmc's `y + topOffset` would put those strokes 121.6 too high).
+    /// Fitted to that one pair, and every sample has `y` = 234, so this can't
+    /// tell `y + 33.59` from a fixed 267.59; relative to `y` is a guess.
     static let topAnchorOffset = 33.59375
 
     /// Each paragraph's top, rmc's layout: they stack by their style's line height.
@@ -80,16 +82,26 @@ extension RootText {
         let value: Value
     }
 
-    /// No real page comes near this; it bounds what a hostile deleted length can allocate.
-    static let maxChars = 1_000_000
+    /// A root text block as read, before its runs are expanded and ordered.
+    struct Source {
+        var items: [Item]
+        var styles: [CrdtID: ParagraphStyle]
+        var x, y, width: Double
+    }
+
+    // ponytail: a cap on characters, deleted ones included, not on bytes: a few
+    // bytes of deleted length expand to this many, so it bounds the work a
+    // hostile page costs (only the page's last text block is expanded). A full
+    // typed page is a few thousand; raise it if heavy editing ever gets near.
+    static let maxChars = 100_000
 
     /// Expand runs to one item per character (ids run on from the run's id),
     /// order them, then split at newlines. Characters are Unicode scalars, as
     /// in rmscene. Inline bold/italic codes are skipped.
-    init(items: [Item], styles: [CrdtID: ParagraphStyle], x: Double, y: Double, width: Double) throws {
+    init(_ source: Source) throws {
         struct Char { let id, left, right: CrdtID; let char: Unicode.Scalar?; let format: Bool }
         var chars: [Char] = []
-        for item in items {
+        for item in source.items {
             let scalars: [Unicode.Scalar?]
             switch item.value {
             case .format:
@@ -130,8 +142,8 @@ extension RootText {
                 }
                 i += 1
             }
-            paragraphs.append(Paragraph(style: styles[start] ?? .plain, text: String(text), startID: start, charIDs: ids))
+            paragraphs.append(Paragraph(style: source.styles[start] ?? .plain, text: String(text), startID: start, charIDs: ids))
         }
-        self.init(paragraphs: paragraphs, x: x, y: y, width: width)
+        self.init(paragraphs: paragraphs, x: source.x, y: source.y, width: source.width)
     }
 }

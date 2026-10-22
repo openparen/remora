@@ -71,6 +71,26 @@ import Testing
         #expect(darkest(image, x: 0..<98, y: 0..<300) > 250) // nothing left of x
     }
 
+    @Test func theImageGrowsForTypedTextPastThePage() throws {
+        var ink = page([])
+        ink.text = [TextLine(style: .plain, text: "gggg", x: 100, y: 2500)]
+        let image = try FlatRenderer.image(ink, scale: 0.5)
+        try #require(Double(image.height) > 2500 * 0.5) // the descenders too
+        #expect(darkest(image, x: 50..<100, y: 1235..<image.height) < 100)
+    }
+
+    @Test func drawingTextLeavesTheTextMatrixAsItWas() throws {
+        let context = try #require(CGContext(
+            data: nil, width: 10, height: 10, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        let before = CGAffineTransform(translationX: 3, y: 4)
+        context.textMatrix = before
+        var ink = page([])
+        ink.text = [TextLine(style: .plain, text: "x", x: 1, y: 1)]
+        try FlatRenderer.draw(ink, in: context)
+        #expect(context.textMatrix == before)
+    }
+
     @Test func inkPushedFarOffThePageThrowsTooLarge() throws {
         let ink = page([stroke([(1_000_000, 100, 10)], opacity: 1)])
         do {

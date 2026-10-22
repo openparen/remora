@@ -62,15 +62,11 @@ public enum FlatRenderer {
         }
     }
 
-    /// Typed text in the system sans, sized by eye against the tablet; list
+    /// Typed text set in the system sans, sized by eye against the tablet; list
     /// markers as characters, the way rmc's text exporters show them.
-    static func drawText(_ lines: [TextLine], in context: CGContext) {
-        guard !lines.isEmpty else { return }
-        context.saveGState()
-        defer { context.restoreGState() }
-        context.textMatrix = CGAffineTransform(scaleX: 1, y: -1) // the context is y down
-        context.setFillColor(CGColor(gray: 0, alpha: 1))
-        for line in lines {
+    static func typeset(_ lines: [TextLine]) -> [(line: CTLine, at: CGPoint)] {
+        var fonts: [ParagraphStyle: CTFont] = [:]
+        return lines.compactMap { line in
             let (marker, size, font): (String, Double, CTFontUIFontType) = switch line.style {
             case .heading: ("", 46, .emphasizedSystem)
             case .bold: ("", 29, .emphasizedSystem)
@@ -80,20 +76,52 @@ public enum FlatRenderer {
             case .checkboxChecked: ("☑  ", 29, .system)
             case .basic, .plain: ("", 29, .system)
             }
-            guard let face = CTFontCreateUIFontForLanguage(font, size, nil) else { continue }
+            if fonts[line.style] == nil { fonts[line.style] = CTFontCreateUIFontForLanguage(font, size, nil) }
+            guard let face = fonts[line.style] else { return nil }
             let string = NSAttributedString(string: marker + line.text, attributes: [
                 NSAttributedString.Key(kCTFontAttributeName as String): face,
                 NSAttributedString.Key(kCTForegroundColorFromContextAttributeName as String): true,
             ])
-            context.textPosition = CGPoint(x: line.x, y: line.y)
-            CTLineDraw(CTLineCreateWithAttributedString(string), context)
+            return (CTLineCreateWithAttributedString(string), CGPoint(x: line.x, y: line.y))
         }
     }
 
-    /// The page on white with its template under the ink, covering the same box as the SVG.
+    static func drawText(_ lines: [TextLine], in context: CGContext) {
+        guard !lines.isEmpty else { return }
+        context.saveGState()
+        // the text matrix (and so the text position) is not part of the graphics state
+        let textMatrix = context.textMatrix
+        defer {
+            context.textMatrix = textMatrix
+            context.restoreGState()
+        }
+        context.textMatrix = CGAffineTransform(scaleX: 1, y: -1) // the context is y down
+        context.setFillColor(CGColor(gray: 0, alpha: 1))
+        for (line, at) in typeset(lines) {
+            context.textPosition = at
+            CTLineDraw(line, context)
+        }
+    }
+
+    /// The SVG's box grown to cover the typed text too, which the SVG leaves out:
+    /// a long note runs past the page like ink can.
+    static func paintBox(_ page: NormalizedPage) throws -> Box {
+        var box = try SVG.paintBox(page)
+        for (line, at) in typeset(page.text) {
+            var ascent: CGFloat = 0, descent: CGFloat = 0
+            let width = CTLineGetTypographicBounds(line, &ascent, &descent, nil)
+            let left = min(box.x, at.x), top = min(box.y, at.y - ascent)
+            let right = max(box.x + box.width, at.x + width), bottom = max(box.y + box.height, at.y + descent)
+            box = Box(x: left, y: top, width: right - left, height: bottom - top)
+        }
+        return box
+    }
+
+    /// The page on white with its template under the ink, covering the same box
+    /// as the SVG, grown for typed text past it.
     public static func image(_ page: NormalizedPage, scale: Double, template: PageTemplate = .blank) throws -> CGImage {
         guard scale.isFinite, scale > 0 else { throw RenderError.badScale(scale) }
-        let box = try SVG.paintBox(page)
+        let box = try paintBox(page)
         let w = (box.width * scale).rounded(.up), h = (box.height * scale).rounded(.up)
         // ponytail: refuse rather than tile; 16k a side is ~1 GB of RGBA, tile when the app needs deep zoom
         guard w >= 1, h >= 1, w <= 16_384, h <= 16_384 else { throw RenderError.tooLarge(width: w, height: h) }
