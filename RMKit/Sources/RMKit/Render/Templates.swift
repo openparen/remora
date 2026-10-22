@@ -34,6 +34,12 @@ public enum PageTemplate: Sendable, Equatable {
         }
     }
 
+    /// How dark template marks are drawn, 0 black to 1 white. reMarkable's
+    /// definitions say black, but the device shows lines as a mid grey; these
+    /// are tuned by eye against the tablet, so adjust here if they look off.
+    public static let lineGray = 0.62
+    public static let dotGray = 0.45
+
     /// The first position at or after 0 on a lattice through `origin`.
     static func firstOnPage(_ origin: Double, _ spacing: Double) -> Double {
         let r = origin.truncatingRemainder(dividingBy: spacing)
@@ -50,8 +56,8 @@ public enum PageTemplate: Sendable, Equatable {
         let w = page.width, h = page.height
         context.saveGState()
         defer { context.restoreGState() }
-        context.setStrokeColor(CGColor(gray: 0, alpha: 1))
-        context.setFillColor(CGColor(gray: 0, alpha: 1))
+        context.setStrokeColor(CGColor(gray: Self.lineGray, alpha: 1))
+        context.setFillColor(CGColor(gray: Self.dotGray, alpha: 1))
         context.setLineWidth(1)
         func hline(_ y: Double) {
             context.move(to: CGPoint(x: 0, y: y))
