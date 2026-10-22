@@ -19,8 +19,7 @@ struct DocumentWindow: View {
                     case .notebook:
                         NotebookView(account: account, item: item, firstPage: link.pageID)
                     case .pdf, .epub:
-                        ContentUnavailableView("\(item.name)", systemImage: "doc.richtext",
-                                               description: Text("PDF and EPUB viewing arrives in the next build."))
+                        PDFDocumentView(account: account, item: item, firstPage: link.pageID)
                     case .folder, .template:
                         ContentUnavailableView("Not a document", systemImage: "folder")
                     }
@@ -64,6 +63,8 @@ struct NotebookView: View {
     @State private var zoom = 1.0
     @State private var currentPageID: String?
     @State private var missingPage = false
+    /// The last page whose ink changed while the window was open.
+    @State private var latestEdit: PageRef?
     @GestureState private var pinch = 1.0
     private let router = Router.shared
 
@@ -123,6 +124,12 @@ struct NotebookView: View {
                 }
                 // keep the reading position when the pages change size
                 .onChange(of: zoom) { if let currentPageID { proxy.scrollTo(currentPageID, anchor: .top) } }
+                .onChange(of: router.jumpToLatestEdit[item.id]) {
+                    if let page = latestEdit {
+                        withAnimation { proxy.scrollTo(page.id, anchor: .top) }
+                        latestEdit = nil
+                    }
+                }
             }
         }
         .background(Color(nsColor: .underPageBackgroundColor))
@@ -136,6 +143,12 @@ struct NotebookView: View {
 
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
         ToolbarItemGroup {
+            if let latestEdit {
+                Button("Jump to Latest Edit (p. \(latestEdit.number))", systemImage: "pencil.and.scribble") {
+                    router.jumpToLatestEdit[item.id, default: 0] += 1
+                }
+                .labelStyle(.titleAndIcon)
+            }
             Button("Zoom Out", systemImage: "minus.magnifyingglass") { zoom = clampZoom(zoom / 1.25) }
                 .keyboardShortcut("-")
             Button("Fit Width", systemImage: "arrow.left.and.right") { zoom = 1 }
@@ -168,7 +181,13 @@ struct NotebookView: View {
 
     private func load() async {
         do {
-            document = try await Document.load(item, blobs: account.sync.blobs)
+            let fresh = try await Document.load(item, blobs: account.sync.blobs)
+            // live: which pages' ink changed since the window last loaded
+            if let old = document {
+                let changed = fresh.pages.filter { fresh.inkFile($0)?.hash != old.inkFile($0)?.hash }
+                if let last = changed.last { latestEdit = last }
+            }
+            document = fresh
             problem = nil
         } catch is CancellationError {
             return

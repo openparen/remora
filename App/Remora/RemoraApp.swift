@@ -28,6 +28,9 @@ struct DocumentLink: Codable, Hashable {
     /// link to the same page scroll again.
     var pageRequest: [String: (page: String, nonce: Int)] = [:]
 
+    /// docID → a counter the toolbar bumps to scroll the window to its latest edit.
+    var jumpToLatestEdit: [String: Int] = [:]
+
     @ObservationIgnored private var openWindow: OpenWindowAction?
     @ObservationIgnored private var pending: [RemoraLink] = []
     @ObservationIgnored private var nonce = 0
