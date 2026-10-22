@@ -127,7 +127,8 @@ import RMKit
 
     /// True while a library may still arrive or change, so "not found" can't be said yet.
     var stillLoading: Bool {
-        !loaded || accounts.contains { $0.syncing || ($0.library == nil && $0.problem == nil) }
+        // a background refresh of a library that's already here doesn't count: it would flicker every poll
+        !loaded || accounts.contains { $0.library == nil && ($0.syncing || $0.problem == nil) }
     }
 
     static func describePairing(_ error: Error) -> String {

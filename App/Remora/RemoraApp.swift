@@ -18,7 +18,7 @@ struct DocumentLink: Codable, Hashable {
 }
 
 /// Turns `rmr://` links into windows. Links can arrive before any view exists
-/// (launch by URL), so they wait until the Library hands over `openWindow`.
+/// (launch by URL), so they wait until the first window hands over `openWindow`.
 @MainActor @Observable final class Router {
     static let shared = Router()
 
@@ -27,9 +27,6 @@ struct DocumentLink: Codable, Hashable {
     /// docID → the page its window should scroll to. The nonce makes a repeated
     /// link to the same page scroll again.
     var pageRequest: [String: (page: String, nonce: Int)] = [:]
-
-    /// docID → a counter the toolbar bumps to scroll the window to its latest edit.
-    var jumpToLatestEdit: [String: Int] = [:]
 
     @ObservationIgnored private var openWindow: OpenWindowAction?
     @ObservationIgnored private var pending: [RemoraLink] = []
