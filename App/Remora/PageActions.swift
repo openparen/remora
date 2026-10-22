@@ -18,36 +18,44 @@ enum ViewTurns {
     }
 }
 
-/// A page as a picture, to copy or to save. Images are drawn at twice their
-/// size in points, so they're marked as such (144 dpi) and paste at page size.
-@MainActor enum PageImage {
-    static func copy(_ image: CGImage?) {
-        guard let image else { return NSSound.beep() }
+/// A page as a picture, and how many of its pixels make a point, so it's
+/// marked with its real resolution and pastes at page size.
+struct PageImage {
+    let image: CGImage
+    let pixelsPerPoint: Double
+}
+
+@MainActor extension PageImage {
+    static func copy(_ page: PageImage?) {
+        guard let page else { return NSSound.beep() }
+        let image = page.image
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.writeObjects([NSImage(cgImage: image, size: pointSize(image))])
+        pasteboard.writeObjects([NSImage(cgImage: image, size: page.pointSize)])
     }
 
     /// Asks where, in a sheet on the key window, then writes a PNG. `name` is the suggestion, without an extension.
-    static func save(_ image: CGImage?, name: String) async {
-        guard let image else { return NSSound.beep() }
+    static func save(_ page: PageImage?, name: String) async {
+        guard let page else { return NSSound.beep() }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.png]
         // a slash would read as a folder
         panel.nameFieldStringValue = name.replacingOccurrences(of: "/", with: "-") + ".png"
         let response = if let window = NSApp.keyWindow { await panel.beginSheetModal(for: window) } else { await panel.begin() }
         guard response == .OK, let url = panel.url else { return }
-        let rep = NSBitmapImageRep(cgImage: image)
-        rep.size = pointSize(image)
+        let rep = NSBitmapImageRep(cgImage: page.image)
+        rep.size = page.pointSize
         do {
             guard let png = rep.representation(using: .png, properties: [:]) else { throw CocoaError(.fileWriteUnknown) }
             try png.write(to: url, options: .atomic)
         } catch {
-            NSAlert(error: error).runModal()
+            if let window = NSApp.keyWindow { await NSAlert(error: error).beginSheetModal(for: window) } else { NSAlert(error: error).runModal() }
         }
     }
 
-    private static func pointSize(_ image: CGImage) -> NSSize { NSSize(width: image.width / 2, height: image.height / 2) }
+    private var pointSize: NSSize {
+        NSSize(width: Double(image.width) / pixelsPerPoint, height: Double(image.height) / pixelsPerPoint)
+    }
 }
 
 /// What a right-click on a page offers, in a notebook window.
@@ -55,7 +63,7 @@ struct PageMenu: View {
     let item: LibraryItem
     let page: PageRef
     /// The page as shown, at full size; nil if it can't be drawn.
-    let image: () async -> CGImage?
+    let image: () async -> PageImage?
 
     var body: some View {
         let link = RemoraLink.document(id: item.id, page: page.id)

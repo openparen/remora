@@ -202,13 +202,14 @@ struct NotebookView: View {
     private func clampZoom(_ value: Double) -> Double { min(4, max(0.25, value)) }
 
     /// The page as shown, at twice the tablet's resolution, halved while that's too large.
-    private func image(of page: PageRef, in document: Document) async -> CGImage? {
+    private func image(of page: PageRef, in document: Document) async -> PageImage? {
         let (blobs, turns) = (account.sync.blobs, turns)
         var scale = 2.0
         for _ in 0..<4 {
             do {
                 let image = try await document.render(page, scale: scale, blobs: blobs).image
-                return await Task.detached { image.turned(turns) }.value
+                // a tablet pixel is a point, as in the window at its fitted size
+                return await Task.detached { image.turned(turns) }.value.map { PageImage(image: $0, pixelsPerPoint: scale) }
             } catch FlatRenderer.RenderError.tooLarge {
                 scale /= 2
             } catch {
@@ -249,15 +250,18 @@ struct PageView: View {
     let turns: Int
 
     @Environment(\.displayScale) private var displayScale
-    @State private var rendered: (image: CGImage, template: PageTemplate?, drops: PageDrops)?
+    /// The page as last drawn, and the turns it was drawn at.
+    @State private var rendered: (image: CGImage, template: PageTemplate?, drops: PageDrops, turns: Int)?
     @State private var problem: String?
 
     var body: some View {
         let upright = document.content.orientation == .landscape ? 3.0 / 4 : 4.0 / 3
-        let aspect = rendered.map { Double($0.image.height) / Double($0.image.width) }
+        // a drawing made at other turns has the wrong shape: use the placeholder's until the new one arrives
+        let current = rendered.flatMap { $0.turns == turns ? $0 : nil }
+        let aspect = current.map { Double($0.image.height) / Double($0.image.width) }
             ?? (turns % 2 == 0 ? upright : 1 / upright)
         ZStack(alignment: .topTrailing) {
-            if let rendered {
+            if let rendered = current {
                 Image(decorative: rendered.image, scale: 1).resizable().interpolation(.high)
             } else if let problem {
                 Text(problem).foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -284,8 +288,6 @@ struct PageView: View {
             await render()
         }
         .onDisappear { rendered = nil }
-        // the placeholder takes the turned shape at once, so the pages above keep the reading position
-        .onChange(of: turns) { rendered = nil }
     }
 
     private struct RenderKey: Hashable {
@@ -309,7 +311,7 @@ struct PageView: View {
                 let turns = turns, image = result.image
                 let shown = await Task.detached { image.turned(turns) ?? image }.value
                 guard !Task.isCancelled else { return }
-                rendered = (shown, result.template, result.drops)
+                rendered = (shown, result.template, result.drops, turns)
                 problem = nil
                 return
             } catch FlatRenderer.RenderError.tooLarge {

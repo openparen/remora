@@ -198,13 +198,13 @@ struct PDFDocumentView: View {
     }
 
     /// The page as shown, with its ink and the view's turns, at twice its size in points.
-    func image(at index: Int) async -> CGImage? {
+    func image(at index: Int) async -> PageImage? {
         guard document.pages.indices.contains(index) else { return nil }
         let (ref, document, blobs, turns, data) = (document.pages[index], document, blobs, turns, sourceData)
         guard let number = ref.sourcePage else {
             // an inserted page is the screen at the v6 scale, as in the view
             let image = (try? await document.render(ref, scale: 2 * PDFPlacement.pointsPerPixel, blobs: blobs))?.image
-            return await Task.detached { image?.turned(turns) }.value
+            return await Task.detached { image?.turned(turns) }.value.map { PageImage(image: $0, pixelsPerPoint: 2) }
         }
         let ink = try? await document.ink(ref, blobs: blobs)
         return await Task.detached { () -> CGImage? in
@@ -214,7 +214,7 @@ struct PDFDocumentView: View {
             let crop = page.getBoxRect(.cropBox).size
             let width = page.rotationAngle % 180 == 0 ? crop.width : crop.height
             return Thumbnail.pdfPage(page, ink: ink, width: width * 2)?.turned(turns)
-        }.value
+        }.value.map { PageImage(image: $0, pixelsPerPoint: 2) }
     }
 
     func go(to index: Int) {
