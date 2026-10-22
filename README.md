@@ -2,6 +2,8 @@
 
 # Remora
 
+<sub>An independent open-source app, not affiliated with or endorsed by reMarkable AS. reMarkable® is their registered trademark.</sub>
+
 A native Mac reader for your reMarkable cloud. Notebooks, PDFs and EPUBs with your ink on them, live while you write, and a stable link to every page.
 
 Remora is the fish that rides along on something bigger.
