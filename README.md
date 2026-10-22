@@ -20,17 +20,19 @@ Most of my thinking happens on the tablet: meeting notes, sketches, the margins 
 - **The library** as a list or as thumbnails: folders, pinned items, and search across names, tags and folder paths. Several accounts side by side.
 - **Fast, and offline.** Remora opens from its cache, then syncs. Whatever it has seen before is there without a connection.
 
+<p align="center"><img src="site/img/shot-document.png" width="420" alt="A PDF page in Remora with handwritten notes: a circled word, an arrow and a margin note"></p>
+
 Remora is a reader. It never edits what you've written.
 
 ## Install
 
-Download `Remora-<version>.dmg` from [Releases](https://github.com/openparen/remora/releases), open it, and drag Remora into Applications. The app is signed and notarized.
-
-A Homebrew cask is coming once the repo is public:
+With Homebrew:
 
 ```sh
 brew install --cask openparen/tap/remora
 ```
+
+Or download `Remora-<version>.dmg` from [Releases](https://github.com/openparen/remora/releases), open it, and drag Remora into Applications. The app is signed and notarized.
 
 **You need** macOS 26 or later, and a reMarkable account with cloud sync (Connect).
 
