@@ -1,5 +1,6 @@
 import AppKit
 import RMKit
+import SwiftUI
 import UniformTypeIdentifiers
 
 extension LibraryItem {
@@ -16,11 +17,8 @@ extension RemoraLink {
     func itemProvider(title: String) -> NSItemProvider {
         let provider = NSItemProvider()
         provider.suggestedName = title
-        let link = url.absoluteString
-        // without a charset AppKit reads the fragment as Latin-1 and garbles "ő"
-        let html = "<meta charset=\"utf-8\"><a href=\"\(link)\">\(Self.escapeHTML(title))</a>"
-        for (type, text) in [(UTType.url.identifier, link), ("public.url-name", title),
-                             (UTType.html.identifier, html), (UTType.utf8PlainText.identifier, markdown(title: title))] {
+        for (type, text) in [(UTType.url.identifier, url.absoluteString), ("public.url-name", title),
+                             (UTType.html.identifier, html(title: title)), (UTType.utf8PlainText.identifier, markdown(title: title))] {
             provider.registerDataRepresentation(forTypeIdentifier: type, visibility: .all) { done in
                 done(Data(text.utf8), nil)
                 return nil
@@ -29,8 +27,34 @@ extension RemoraLink {
         return provider
     }
 
+    /// A titled link for rich text.
+    private func html(title: String) -> String {
+        // without a charset AppKit reads the fragment as Latin-1 and garbles "ő"
+        "<meta charset=\"utf-8\"><a href=\"\(url.absoluteString)\">\(Self.escapeHTML(title))</a>"
+    }
+
     private static func escapeHTML(_ text: String) -> String {
         text.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;").replacingOccurrences(of: "\"", with: "&quot;")
+    }
+}
+
+/// The document's icon at the front of its window's title bar: drag it out and
+/// it lands like the library item, as a titled link.
+// ponytail: a toolbar item, not AppKit's proxy icon, which needs the window delegate SwiftUI owns
+struct DocumentDragHandle: ToolbarContent {
+    let item: LibraryItem
+
+    var body: some ToolbarContent {
+        ToolbarItem(placement: .navigation) {
+            Image(systemName: item.kind.symbol)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 4)
+                .contentShape(Rectangle())
+                .onDrag { item.link.itemProvider(title: item.dragTitle) }
+                .help("Drag into another app for a link to this document")
+                .accessibilityLabel("Link to \(item.name)")
+                .accessibilityAction(named: "Copy Link") { Clipboard.copy(item.link.url.absoluteString) }
+        }
     }
 }

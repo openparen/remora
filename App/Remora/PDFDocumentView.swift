@@ -51,6 +51,7 @@ struct PDFDocumentView: View {
     }
 
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
+        DocumentDragHandle(item: item)
         ToolbarItemGroup {
             Button("Zoom Out", systemImage: "minus.magnifyingglass") { model?.view?.zoomOut(nil) }
                 .keyboardShortcut("-")
