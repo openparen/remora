@@ -4,7 +4,7 @@
 **Status:** Agreed with the user. Not built yet.
 **Design:** `2026-10-21-remora-design.md` ("later notarized and distributed as a DMG", "private until v1").
 
-The repo lives in the `open-paren` GitHub organization (moved from `gveres` before going public); the bundle id stays `io.github.gveres.remora`, since changing it would orphan Keychain items and settings.
+The repo lives in the `openparen` GitHub organization (`open-paren` was taken) (moved from `gveres` before going public); the bundle id stays `io.github.gveres.remora`, since changing it would orphan Keychain items and settings.
 
 GitHub is the distribution platform: notarized DMGs on GitHub releases, plus a Homebrew cask. The announcement is kept small: the app is only useful to reMarkable owners, so it goes only where they are.
 
@@ -30,12 +30,12 @@ Not in CI: that would put the signing certificate into repo secrets, for no gain
 
 ## 3. Homebrew
 
-- Our own tap first: `open-paren/homebrew-tap`, with `Casks/remora.rb`.
+- Our own tap first: `openparen/homebrew-tap`, with `Casks/remora.rb`.
   - `url` is the release DMG, plus its `sha256`;
   - `depends_on macos: ">= :tahoe"` (macOS 26);
   - `app "Remora.app"`;
   - `zap` removes `~/Library/Caches/Remora`.
-- Install line: `brew install --cask open-paren/tap/remora`.
+- Install line: `brew install --cask openparen/tap/remora`.
 - `homebrew/cask` later, once the repo meets its notability bar (roughly 75 stars, or 30 forks or watchers). The cask file carries over almost unchanged.
 
 ## 4. Before going public
@@ -48,7 +48,7 @@ Not in CI: that would put the signing certificate into repo secrets, for no gain
 - A privacy paragraph: the app talks only to reMarkable's cloud, keeps the device token in Keychain, and has no telemetry.
 - A risk note: it uses reMarkable's unofficial cloud API, which can change.
 - Issues stay open for feedback.
-- `gh repo edit open-paren/remora --visibility public`.
+- `gh repo edit openparen/remora --visibility public`.
 
 ## 5. Website: remora.open-paren.dev
 

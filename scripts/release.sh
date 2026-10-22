@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build, notarize and publish a release: Remora-<version>.dmg on the GitHub
 # release v<version>, and the cask in the Homebrew tap (REMORA_TAP, default
-# open-paren/homebrew-tap), from a clean tree whose HEAD is pushed. The version is
+# openparen/homebrew-tap), from a clean tree whose HEAD is pushed. The version is
 # MARKETING_VERSION in project.yml. usage: scripts/release.sh
 #
 # Signs with the Developer ID in REMORA_SIGN_IDENTITY / REMORA_TEAM (as
@@ -72,7 +72,7 @@ git push -q origin "$tag"
 gh release create "$tag" "$dmg" --verify-tag --title "Remora $version" --generate-notes
 
 # the Homebrew cask: the new version and the DMG's checksum
-tap=${REMORA_TAP:-open-paren/homebrew-tap}
+tap=${REMORA_TAP:-openparen/homebrew-tap}
 sha=$(shasum -a 256 "$dmg" | cut -d' ' -f1)
 git clone -q "git@github.com:$tap.git" "$work/tap"
 sed -i '' -e "s/^  version \".*\"/  version \"$version\"/" -e "s/^  sha256 \".*\"/  sha256 \"$sha\"/" "$work/tap/Casks/remora.rb"

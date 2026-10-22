@@ -24,12 +24,12 @@ Remora is a reader. It never edits what you've written.
 
 ## Install
 
-Download `Remora-<version>.dmg` from [Releases](https://github.com/open-paren/remora/releases), open it, and drag Remora into Applications. The app is signed and notarized.
+Download `Remora-<version>.dmg` from [Releases](https://github.com/openparen/remora/releases), open it, and drag Remora into Applications. The app is signed and notarized.
 
 A Homebrew cask is coming once the repo is public:
 
 ```sh
-brew install --cask open-paren/tap/remora
+brew install --cask openparen/tap/remora
 ```
 
 **You need** macOS 26 or later, and a reMarkable account with cloud sync (Connect).
@@ -53,7 +53,7 @@ Ids are reMarkable's own, so a link survives renames, moves and page reordering.
 
 ## The fine print
 
-Remora uses reMarkable's cloud the way their own apps do. There's no official API for this, so a change on their side can break it until it's fixed here. If that happens, please [open an issue](https://github.com/open-paren/remora/issues).
+Remora uses reMarkable's cloud the way their own apps do. There's no official API for this, so a change on their side can break it until it's fixed here. If that happens, please [open an issue](https://github.com/openparen/remora/issues).
 
 ## Building from source
 
