@@ -51,6 +51,53 @@ import Testing
         #expect(red(image, 100, 120) > 250) // below it
     }
 
+    /// The darkest red channel in a box of pixels, rows counted from the top.
+    func darkest(_ image: CGImage, x: Range<Int>, y: Range<Int>) -> UInt8 {
+        var pixels = [UInt8](repeating: 0, count: image.width * image.height * 4)
+        let context = CGContext(
+            data: &pixels, width: image.width, height: image.height, bitsPerComponent: 8,
+            bytesPerRow: image.width * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        return y.flatMap { row in x.map { pixels[(row * image.width + $0) * 4] } }.min() ?? 255
+    }
+
+    @Test func paintsTypedTextAboveItsBaseline() throws {
+        var ink = page([])
+        ink.text = [TextLine(style: .heading, text: "HHHH", x: 100, y: 200)]
+        let image = try FlatRenderer.image(ink, scale: 1)
+        #expect(darkest(image, x: 100..<200, y: 170..<200) < 60) // the letters, upright over the baseline
+        #expect(darkest(image, x: 100..<200, y: 202..<260) > 250) // nothing hangs below it
+        #expect(darkest(image, x: 0..<98, y: 0..<300) > 250) // nothing left of x
+    }
+
+    @Test func theImageGrowsForTypedTextPastThePage() throws {
+        var ink = page([])
+        ink.text = [TextLine(style: .plain, text: "gggg", x: 100, y: 2500)]
+        let image = try FlatRenderer.image(ink, scale: 0.5)
+        try #require(Double(image.height) > 2500 * 0.5) // the descenders too
+        #expect(darkest(image, x: 50..<100, y: 1235..<image.height) < 100)
+    }
+
+    @Test func aLongParagraphDoesNotWidenThePage() throws {
+        var ink = page([])
+        ink.text = [TextLine(style: .plain, text: String(repeating: "long paragraph ", count: 40), x: 234, y: 300)]
+        let image = try FlatRenderer.image(ink, scale: 1)
+        #expect(Double(image.width) == (try SVG.paintBox(ink)).width.rounded(.up))
+    }
+
+    @Test func drawingTextLeavesTheTextMatrixAsItWas() throws {
+        let context = try #require(CGContext(
+            data: nil, width: 10, height: 10, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        let before = CGAffineTransform(translationX: 3, y: 4)
+        context.textMatrix = before
+        var ink = page([])
+        ink.text = [TextLine(style: .plain, text: "x", x: 1, y: 1)]
+        try FlatRenderer.draw(ink, in: context)
+        #expect(context.textMatrix == before)
+    }
+
     @Test func inkPushedFarOffThePageThrowsTooLarge() throws {
         let ink = page([stroke([(1_000_000, 100, 10)], opacity: 1)])
         do {

@@ -1,11 +1,12 @@
 import CoreGraphics
+import CoreText
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 
 /// Flat ink with Core Graphics: the same stroke runs and paint as the SVG
-/// port, unrounded, plus text highlights, which only this renderer draws (the
-/// SVG leaves them out to stay byte-identical with rm2agent). A translucent
+/// port, unrounded, plus typed text and text highlights, which only this
+/// renderer draws (the SVG leaves them out to stay byte-identical with rm2agent). A translucent
 /// stroke is drawn in one transparency layer, so its overlapping runs don't
 /// darken each other.
 public enum FlatRenderer {
@@ -23,7 +24,8 @@ public enum FlatRenderer {
         defer { context.restoreGState() }
         context.setLineCap(.round)
         context.setLineJoin(.round)
-        // highlights first, under the ink; one layer each so overlapping rectangles don't darken
+        drawText(page.text, in: context)
+        // highlights next, under the ink; one layer each so overlapping rectangles don't darken
         for highlight in page.highlights where !highlight.rects.isEmpty {
             context.saveGState()
             context.setAlpha(highlight.style.opacity)
@@ -60,10 +62,66 @@ public enum FlatRenderer {
         }
     }
 
-    /// The page on white with its template under the ink, covering the same box as the SVG.
+    /// Typed text set in the system sans, sized by eye against the tablet; list
+    /// markers as characters, the way rmc's text exporters show them.
+    static func typeset(_ lines: [TextLine]) -> [(line: CTLine, at: CGPoint)] {
+        var fonts: [ParagraphStyle: CTFont] = [:]
+        return lines.compactMap { line in
+            let (marker, size, font): (String, Double, CTFontUIFontType) = switch line.style {
+            case .heading: ("", 46, .emphasizedSystem)
+            case .bold: ("", 29, .emphasizedSystem)
+            case .bullet: ("•  ", 29, .system)
+            case .bullet2: ("      ◦  ", 29, .system)
+            case .checkbox: ("☐  ", 29, .system)
+            case .checkboxChecked: ("☑  ", 29, .system)
+            case .basic, .plain: ("", 29, .system)
+            }
+            if fonts[line.style] == nil { fonts[line.style] = CTFontCreateUIFontForLanguage(font, size, nil) }
+            guard let face = fonts[line.style] else { return nil }
+            let string = NSAttributedString(string: marker + line.text, attributes: [
+                NSAttributedString.Key(kCTFontAttributeName as String): face,
+                NSAttributedString.Key(kCTForegroundColorFromContextAttributeName as String): true,
+            ])
+            return (CTLineCreateWithAttributedString(string), CGPoint(x: line.x, y: line.y))
+        }
+    }
+
+    static func drawText(_ lines: [TextLine], in context: CGContext) {
+        guard !lines.isEmpty else { return }
+        context.saveGState()
+        // the text matrix (and so the text position) is not part of the graphics state
+        let textMatrix = context.textMatrix
+        defer {
+            context.textMatrix = textMatrix
+            context.restoreGState()
+        }
+        context.textMatrix = CGAffineTransform(scaleX: 1, y: -1) // the context is y down
+        context.setFillColor(CGColor(gray: 0, alpha: 1))
+        for (line, at) in typeset(lines) {
+            context.textPosition = at
+            CTLineDraw(line, context)
+        }
+    }
+
+    /// The SVG's box grown down to cover the typed text too, which the SVG leaves
+    /// out: a long note runs past the page bottom like ink can. Only down: a
+    /// paragraph is one unwrapped line, and widening for it would shrink the page.
+    // ponytail: no word wrap, so a long paragraph runs off the right edge; wrap at RootText.width to fix
+    static func paintBox(_ page: NormalizedPage) throws -> Box {
+        var box = try SVG.paintBox(page)
+        for (line, at) in typeset(page.text) {
+            var descent: CGFloat = 0
+            CTLineGetTypographicBounds(line, nil, &descent, nil)
+            box.height = max(box.y + box.height, at.y + descent) - box.y
+        }
+        return box
+    }
+
+    /// The page on white with its template under the ink, covering the same box
+    /// as the SVG, grown for typed text past it.
     public static func image(_ page: NormalizedPage, scale: Double, template: PageTemplate = .blank) throws -> CGImage {
         guard scale.isFinite, scale > 0 else { throw RenderError.badScale(scale) }
-        let box = try SVG.paintBox(page)
+        let box = try paintBox(page)
         let w = (box.width * scale).rounded(.up), h = (box.height * scale).rounded(.up)
         // ponytail: refuse rather than tile; 16k a side is ~1 GB of RGBA, tile when the app needs deep zoom
         guard w >= 1, h >= 1, w <= 16_384, h <= 16_384 else { throw RenderError.tooLarge(width: w, height: h) }

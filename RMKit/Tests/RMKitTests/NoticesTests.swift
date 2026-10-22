@@ -190,9 +190,14 @@ func eventually(within limit: Duration = .seconds(5), _ condition: () -> Bool) a
     @Test func endingTheStreamClosesTheSocket() async throws {
         let server = try await NoticeServer()
         let (cloud, _) = server.cloud()
-        let consumer = Task { for await _ in cloud.changes(poll: .seconds(3600)) {} }
-        // a client cancelled mid-handshake sends no close frame for the server to see
+        let changes = Locked(0)
+        let consumer = Task { for await _ in cloud.changes(poll: .seconds(3600)) { changes.update { $0 += 1 } } }
+        // a client cancelled mid-handshake sends no close frame for the server to see,
+        // and the server's end being ready doesn't mean the client's is: wait for a
+        // notice to come through, which only an open client socket passes on
         #expect(await eventually { server.ready.value == 1 })
+        server.send(notice(from: "tablet"))
+        #expect(await eventually { changes.value == 1 })
         consumer.cancel()
         #expect(await eventually(within: .seconds(1)) { server.gone.value == 1 })
         try await Task.sleep(for: .milliseconds(100))

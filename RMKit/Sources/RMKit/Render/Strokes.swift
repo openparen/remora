@@ -41,6 +41,15 @@ public struct NormalizedPage: Sendable {
     public var highlights: [Highlight] = []
     /// The `.rm` version the page came from; PDF placement differs before v6.
     public var version: Int = 6
+    /// Typed text, one line per paragraph, top to bottom.
+    public var text: [TextLine] = []
+}
+
+/// A typed paragraph laid out on the page: `x` its left edge, `y` its baseline.
+public struct TextLine: Sendable, Equatable {
+    public var style: ParagraphStyle
+    public var text: String
+    public var x, y: Double
 }
 
 public struct Highlight: Sendable, Equatable {
@@ -76,7 +85,8 @@ public func normalize(_ page: RMPage, orientation: Orientation) -> NormalizedPag
         var points: [StrokePoint] = []
         points.reserveCapacity(raw.points.count)
         for point in raw.points {
-            let (x, y) = geometry.toPage(x: point.x, y: point.y, version: page.version)
+            let (x, y) = geometry.toPage(
+                x: point.x + raw.anchorOffset.x, y: point.y + raw.anchorOffset.y, version: page.version)
             guard x.isFinite, y.isFinite else {
                 drops.nonFinitePoints += 1
                 continue
@@ -102,11 +112,22 @@ public func normalize(_ page: RMPage, orientation: Orientation) -> NormalizedPag
     let highlights = page.highlights.filter { !$0.hidden }.map { raw in
         Highlight(
             rects: raw.rects.map { rect in
-                let (x, y) = geometry.toPage(x: rect.x, y: rect.y, version: page.version)
+                let (x, y) = geometry.toPage(
+                    x: rect.x + raw.anchorOffset.x, y: rect.y + raw.anchorOffset.y, version: page.version)
                 return CGRect(x: x, y: y, width: rect.width, height: rect.height)
             },
             style: Palette.style(pen: .highlighter, color: raw.color, rgba: raw.colorRgba),
             text: raw.text)
     }
-    return NormalizedPage(strokes: strokes, drops: drops, geometry: geometry, highlights: highlights, version: page.version)
+    var text: [TextLine] = []
+    if let root = page.text {
+        // rmc draws each paragraph's baseline one line height below its top
+        for (paragraph, top) in zip(root.paragraphs, root.tops()) where !paragraph.text.isEmpty {
+            let (x, y) = geometry.toPage(x: root.x, y: top + RootText.lineHeight(paragraph.style), version: page.version)
+            guard x.isFinite, y.isFinite else { continue }
+            text.append(TextLine(style: paragraph.style, text: paragraph.text, x: x, y: y))
+        }
+    }
+    return NormalizedPage(
+        strokes: strokes, drops: drops, geometry: geometry, highlights: highlights, version: page.version, text: text)
 }

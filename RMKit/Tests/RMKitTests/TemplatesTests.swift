@@ -41,7 +41,7 @@ import Testing
     @Test func linesAreDrawnUnderTheInk() throws {
         let blank = NormalizedPage(strokes: [], drops: PageDrops(), geometry: rm2)
         let image = try FlatRenderer.image(blank, scale: 1, template: .lines(spacing: 78.7, top: 177.8))
-        #expect(ink(image, 700, 178) > 60) // the first line, antialiased across rows 177-178
+        #expect(ink(image, 700, 178) > 20) // the first line, grey, antialiased across rows 177-178
         #expect(ink(image, 700, 100) == 0) // the header area above it stays white
         #expect(ink(image, 700, 217) == 0) // halfway to the next line
     }

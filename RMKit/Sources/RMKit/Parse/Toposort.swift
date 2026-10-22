@@ -4,10 +4,11 @@
 /// is always deterministic even for a file with duplicate ids.
 /// Items a cycle keeps from being placed are appended in input order.
 ///
-/// ponytail: deleted items are dropped before this ever sees them, as
-/// rmapi-js does, so a deletion is never an ordering anchor here. rmscene
-/// keeps tombstones around as anchors instead; that only matters once this
-/// port stops tracking rmapi-js's behaviour exactly.
+/// ponytail: scene items drop their deleted entries before this sees them, as
+/// rmapi-js does, so there a deletion is never an ordering anchor; rmscene
+/// keeps tombstones as anchors instead, which only matters once this port
+/// stops tracking rmapi-js exactly. Root text passes its deleted characters
+/// in on purpose, as rmscene does, since groups can be anchored to them.
 enum Toposort {
     static func order<T>(
         _ items: [T],
