@@ -32,6 +32,8 @@ final class NoticeServer: Sendable {
     private let clients = Locked<[NWConnection]>([])
     /// When each client connected.
     let connects = Locked<[ContinuousClock.Instant]>([])
+    /// Clients whose websocket handshake finished.
+    let ready = Locked(0)
     /// Clients that closed their end.
     let gone = Locked(0)
     let url: URL
@@ -45,9 +47,10 @@ final class NoticeServer: Sendable {
         }
         let listener = try NWListener(using: parameters, on: .any)
         let queue = DispatchQueue(label: "NoticeServer")
-        listener.newConnectionHandler = { [clients, connects, gone] client in
+        listener.newConnectionHandler = { [clients, connects, ready, gone] client in
             connects.update { $0.append(.now) }
             clients.update { $0.append(client) }
+            client.stateUpdateHandler = { if case .ready = $0 { ready.update { $0 += 1 } } }
             client.start(queue: queue)
             if refuse {
                 let reply = "HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
@@ -188,7 +191,8 @@ func eventually(within limit: Duration = .seconds(5), _ condition: () -> Bool) a
         let server = try await NoticeServer()
         let (cloud, _) = server.cloud()
         let consumer = Task { for await _ in cloud.changes(poll: .seconds(3600)) {} }
-        #expect(await eventually { server.connects.value.count == 1 })
+        // a client cancelled mid-handshake sends no close frame for the server to see
+        #expect(await eventually { server.ready.value == 1 })
         consumer.cancel()
         #expect(await eventually(within: .seconds(1)) { server.gone.value == 1 })
         try await Task.sleep(for: .milliseconds(100))

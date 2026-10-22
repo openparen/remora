@@ -138,7 +138,8 @@ public actor CloudSession {
     /// last ping went unanswered; reopens every `reopen` regardless. Reconnects
     /// after `backoff`, doubling while connections keep failing.
     func listen(
-        ping: Duration = .seconds(60),
+        // under URLSession's 60 s request timeout, so an idle socket is never timed out between pings
+        ping: Duration = .seconds(45),
         reopen: Duration = .seconds(3600),
         backoff: Duration = .seconds(1),
         _ changed: @Sendable () -> Void

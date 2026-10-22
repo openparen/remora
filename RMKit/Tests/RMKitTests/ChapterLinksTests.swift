@@ -22,6 +22,17 @@ import Testing
         #expect(ChapterLinks.chapterStart(title: "Lack János: Hétfőember (válogatott határaim)", pageStarts: pages, after: 0) == 3)
     }
 
+    @Test func numberedChaptersStayApart() {
+        let book = ["Contents Chapter 1 Chapter 2", "Chapter 1 It begins", "Chapter 2 It goes on"].map { ChapterLinks.letters($0) }
+        #expect(ChapterLinks.chapterStart(title: "Chapter 2", pageStarts: book, after: 0) == 2)
+    }
+
+    @Test func onlyLigatureLettersMaySlip() {
+        // "Ann" must not match a page that opens "And then"
+        let book = ["Contents", "And then she left", "Ann"].map { ChapterLinks.letters($0) }
+        #expect(ChapterLinks.chapterStart(title: "Ann", pageStarts: book, after: 0) == 2)
+    }
+
     @Test func noTitleOrNoMatchGoesNowhere() {
         #expect(ChapterLinks.chapterStart(title: "1", pageStarts: pages, after: 0) == nil)
         #expect(ChapterLinks.chapterStart(title: "Nincs ilyen fejezet", pageStarts: pages, after: 0) == nil)

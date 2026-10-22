@@ -187,7 +187,8 @@ struct PDFDocumentView: View {
             if fresh.inkFile(page) == nil {
                 ink[index] = nil
                 overlays[index]?.view?.needsDisplay = true
-            } else {
+            } else if ink[index] != nil || overlays[index]?.view != nil {
+                // only pages that were viewed; the rest load when they come on screen
                 load(index)
             }
         }
@@ -208,7 +209,8 @@ struct PDFDocumentView: View {
             // a newer document replaced this ink while it loaded, and loads its own
             guard self.document.inkFile(ref)?.hash == document.inkFile(ref)?.hash else { return }
             loading.remove(index)
-            // ponytail: a page whose ink fails to load shows none and retries on its next draw; no per-page error yet
+            // ponytail: a page whose ink fails to load shows none until something redraws it (zoom, scroll back),
+            // which retries; no per-page error yet
             guard let page else { return }
             ink[index] = page
             overlays[index]?.view?.needsDisplay = true
@@ -224,12 +226,16 @@ struct PDFDocumentView: View {
         let originals = original?.annotations ?? []
         let copies = page.annotations
         for (offset, annotation) in copies.enumerated() {
-            if originals.count == copies.count, let target = retargeted(originals[offset]) {
-                annotation.action = PDFActionGoTo(destination: target)
+            let original = originals.count == copies.count && originals[offset].bounds == annotation.bounds ? originals[offset] : nil
+            if let original, original.action is PDFActionGoTo || original.destination != nil {
+                // a jump to a page no longer in the document goes nowhere
+                annotation.action = retargeted(original).map { PDFActionGoTo(destination: $0) }
             } else if let url = (annotation.action as? PDFActionURL)?.url ?? annotation.url, url.scheme == nil {
-                // a link that wraps is one annotation per line: keep the longest text
+                // the first link to a chapter wins (a table of contents comes first); a link that wraps
+                // is one annotation per line on the same page, so there keep the longest text
                 let title = page.selection(for: annotation.bounds)?.string ?? ""
-                if title.count > chapterLinks[url.absoluteString]?.title.count ?? -1 {
+                let known = chapterLinks[url.absoluteString]
+                if known == nil || known?.index == index && title.count > known!.title.count {
                     chapterLinks[url.absoluteString] = (index, title)
                 }
             }
@@ -284,10 +290,11 @@ struct PDFKitView: NSViewRepresentable {
         view.backgroundColor = .underPageBackgroundColor
         view.pageOverlayViewProvider = context.coordinator
         view.delegate = context.coordinator
-        view.document = model.pdf
-        model.view = view
+        // observe first: handing the model its view runs any page jump it was holding
         NotificationCenter.default.addObserver(
             context.coordinator, selector: #selector(Coordinator.pageChanged(_:)), name: .PDFViewPageChanged, object: view)
+        view.document = model.pdf
+        model.view = view
         return view
     }
 
@@ -315,7 +322,8 @@ struct PDFKitView: NSViewRepresentable {
         /// the system, which fails on an EPUB's chapter file names.
         func pdfViewWillClick(onLink sender: PDFView, with url: URL) {
             switch url.scheme?.lowercased() {
-            case "http", "https", "mailto", "rmr": NSWorkspace.shared.open(url)
+            case "http", "https", "mailto": NSWorkspace.shared.open(url)
+            case "rmr": Router.shared.handle(url)
             case nil: model.follow(url)
             default: break
             }

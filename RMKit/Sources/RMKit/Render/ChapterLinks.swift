@@ -5,9 +5,9 @@ import Foundation
 /// starts every chapter on a new page under its title. So a link goes to the
 /// first later page that opens with the link's own text.
 public enum ChapterLinks {
-    /// What's compared: letters only, so line breaks, hyphenation and punctuation don't matter.
+    /// What's compared: letters and digits only, so line breaks, hyphenation and punctuation don't matter.
     public static func letters<S: StringProtocol>(_ text: S) -> String {
-        String(text.lowercased().filter(\.isLetter))
+        String(text.lowercased().filter { $0.isLetter || $0.isNumber })
     }
 
     /// The index of the page the chapter titled `title` starts on, searching the
@@ -15,18 +15,22 @@ public enum ChapterLinks {
     // ponytail: matched by title; a chapter whose heading differs from its table-of-contents entry isn't found
     public static func chapterStart(title: String, pageStarts: [String], after: Int) -> Int? {
         let wanted = letters(title)
-        guard wanted.count >= 3, after + 1 < pageStarts.count else { return nil }
-        // text extraction can drop a ligature (fi, ffi) from the link, so the page may have a few letters more
-        let window = wanted.count + max(4, wanted.count / 5)
-        return (after + 1..<pageStarts.count).first { index in
-            let start = pageStarts[index]
-            return start.first == wanted.first && isSubsequence(wanted, of: start.prefix(window))
-        }
+        guard wanted.count >= 3, after >= -1, after + 1 < pageStarts.count else { return nil }
+        return (after + 1..<pageStarts.count).first { opens(pageStarts[$0], with: wanted) }
     }
 
-    private static func isSubsequence(_ needle: String, of haystack: Substring) -> Bool {
-        var rest = needle[...]
-        for character in haystack where rest.first == character { rest = rest.dropFirst() }
+    /// True when `page` starts with `title`. Text extraction can drop a ligature (ff, fi, fl, ffi, ffl)
+    /// from the link, so the page may have an f, i or l more here and there, and nothing else.
+    private static func opens(_ page: String, with title: String) -> Bool {
+        var rest = title[...]
+        for character in page {
+            if rest.isEmpty { return true }
+            if character == rest.first {
+                rest = rest.dropFirst()
+            } else if !"fil".contains(character) {
+                return false
+            }
+        }
         return rest.isEmpty
     }
 }

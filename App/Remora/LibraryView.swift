@@ -73,8 +73,9 @@ struct LibraryView: View {
             pendingFolder = router.folderRequest?.folder
             showPendingFolder()
         }
-        // a folder link that arrived before the libraries did
+        // a folder link that arrived before the libraries did, or before the sync that brings its folder
         .onChange(of: store.stillLoading) { showPendingFolder() }
+        .onChange(of: store.accounts.map(\.lastSynced)) { showPendingFolder() }
         .onChange(of: place) {
             search = ""
             selected = []

@@ -21,7 +21,7 @@ public enum PDFPlacement {
             return CGAffineTransform(a: k, b: 0, c: 0, d: k, tx: displayed.width / 2 - page.geometry.width / 2 * k, ty: 0)
         }
         // v3/v5: measured in the portrait screen's coordinates; normalize turned a landscape document's ink, so turn it back
-        // ponytail: v3/v5 ink on a landscape PDF is unmeasured; it's placed as on a portrait one
+        // ponytail: v3/v5 ink in a landscape-orientation PDF document is unmeasured; it's placed as on a portrait one
         let screen = page.geometry.orientation == .landscape
             ? CGAffineTransform(a: 0, b: -1, c: 1, d: 0, tx: 0, ty: page.geometry.width)
             : .identity
