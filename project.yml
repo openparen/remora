@@ -29,12 +29,12 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: io.github.gveres.remora
         PRODUCT_NAME: Remora
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        MARKETING_VERSION: "0.1"
+        MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "6.0"
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_IDENTITY: "-"
         DEVELOPMENT_TEAM: ""
-        ENABLE_HARDENED_RUNTIME: NO
+        ENABLE_HARDENED_RUNTIME: YES   # notarization needs it
         ENABLE_APP_SANDBOX: NO
         GENERATE_INFOPLIST_FILE: NO

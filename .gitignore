@@ -4,3 +4,4 @@
 *.xcodeproj/
 golden-out/
 .wrangler/
+build/

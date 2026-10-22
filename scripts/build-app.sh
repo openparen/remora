@@ -20,6 +20,9 @@ xcodegen generate --quiet
 signing=()
 if [ -n "${REMORA_SIGN_IDENTITY:-}" ]; then
   signing=(CODE_SIGN_STYLE=Manual "CODE_SIGN_IDENTITY=$REMORA_SIGN_IDENTITY" "DEVELOPMENT_TEAM=${REMORA_TEAM:-}")
+  # a release is notarized, which wants a secure timestamp and no debugger entitlement
+  # (xcodebuild build injects get-task-allow in every configuration; only an archive leaves it out)
+  [ "$config" = Release ] && signing+=(OTHER_CODE_SIGN_FLAGS=--timestamp CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO)
 fi
 
 log="$dd/build.log"
