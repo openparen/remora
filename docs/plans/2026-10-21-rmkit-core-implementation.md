@@ -1,7 +1,5 @@
 # RMKit core: implementation plan (Remora plan 1 of 3)
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
-
 **Goal:** `RMKit`, the headless core of Remora: pairing, Keychain, the read-only cloud client, the content-addressed cache, the library index, the page map, the `.rm` v3/v5/v6 parser and flat ink rendering (SVG and Core Graphics). It also includes a `remora-cli` for checking all of it against the real account.
 
 **Architecture:** One Swift package, `RMKit/`, at the repo root, with a library target, a `remora-cli` executable and a Swift Testing target. It is a straight port of what rm2agent proved:
@@ -21,8 +19,8 @@ rm2agent's SVG output is the oracle: the golden test requires byte-identical SVG
 
 ## Before you start
 
-- Work in `/Users/gve/workbee/codez/Projects/remora` on a branch: `git checkout -b feat/rmkit-core`.
-- You need the rm2agent checkout at `/Users/gve/workbee/codez/Projects/rm2agent`, built (`npm run build` there), for Task 1's golden SVGs. You also need `node`, `jq` and `git`.
+- Work in the remora checkout on a branch: `git checkout -b feat/rmkit-core`.
+- You need an rm2agent checkout, built (`npm run build` there), for Task 1's golden SVGs. You also need `node`, `jq` and `git`.
 - All test commands run from the repo root: `swift test --package-path RMKit [--filter <Suite>]`.
 - The user's own fixtures notebook (M0 in the design: every pen and colour, a landscape page, a large-format PDF, an EPUB) **does not block this plan**. rmscene's MIT-licensed samples cover v6 here, and the live test covers the rest. Ask the user to start making it anyway; plan 2 needs it.
 - Commit after every task with the message given. End each message with the `Co-Authored-By` line from your session's instructions.
@@ -322,7 +320,7 @@ Then:
 git clone --depth 1 https://github.com/ricklupton/rmscene /tmp/rmscene
 mkdir -p RMKit/Tests/RMKitTests/Fixtures/rmscene
 cp /tmp/rmscene/tests/data/*.rm /tmp/rmscene/LICENSE RMKit/Tests/RMKitTests/Fixtures/rmscene/
-node scripts/rmscene-goldens.mjs /Users/gve/workbee/codez/Projects/rm2agent RMKit/Tests/RMKitTests/Fixtures/rmscene/*.rm
+node scripts/rmscene-goldens.mjs <rm2agent checkout> RMKit/Tests/RMKitTests/Fixtures/rmscene/*.rm
 ls RMKit/Tests/RMKitTests/Fixtures/rmscene | wc -l
 ```
 Expected: 13 lines of `…: N strokes`, then `27` (13 `.rm` files, 13 `.svg` files, `LICENSE`). The text-only samples report 0 strokes, which is correct.

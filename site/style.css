@@ -95,6 +95,7 @@ section { padding: 72px 0; border-top: 1px solid var(--line); }
   color: var(--bg);
   font-weight: 600;
   font-size: 0.95rem;
+  text-decoration: none;
 }
 
 /* Lists of points */

@@ -77,7 +77,7 @@ The default build is ad-hoc signed. It works, but macOS then asks for Keychain a
 
 ## Thanks
 
-Remora stands on the shoulders of people who worked out reMarkable's formats in the open, especially [rmscene](https://github.com/ricklupton/rmscene) and [rmc](https://github.com/ricklupton/rmc) by Rick Lupton. RMKit's tests use rmscene's sample files, under its MIT license.
+Remora stands on the shoulders of people who worked out reMarkable's formats in the open, especially [rmscene](https://github.com/ricklupton/rmscene) and [rmc](https://github.com/ricklupton/rmc) by Rick Lupton. Parts of RMKit are ported from [rmapi-js](https://github.com/erikbrinkman/rmapi-js) by Erik Brinkman, and its tests use rmscene's sample files. Their licenses are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## License
 

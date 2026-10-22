@@ -5,3 +5,9 @@
 golden-out/
 .wrangler/
 build/
+.omc/
+.claude/
+.env*
+*.p8
+DerivedData/
+*.dmg

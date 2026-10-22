@@ -3,7 +3,7 @@ import Testing
 @testable import RMKit
 
 @Suite struct LinksTests {
-    let doc = "d87aba33-e57c-438b-8d0a-91ace808f9a9", page = "3f41ce80-261d-4b4b-a73d-386fd2d36535"
+    let doc = "36965769-1619-48ce-8928-84b9dde8b756", page = "4d9c3a99-a415-46eb-adb6-5553e934a08d"
 
     @Test func roundTrips() {
         for link in [RemoraLink.document(id: doc, page: nil), .document(id: doc, page: page), .folder(id: doc)] {
