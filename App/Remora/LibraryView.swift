@@ -18,6 +18,7 @@ struct LibraryView: View {
     @State private var selected: Set<LibraryItem.ID> = []
     /// A folder link waiting for a library that knows the folder.
     @State private var pendingFolder: String?
+    @AppStorage("libraryShowsGrid") private var showsGrid = false
     private let store = AccountStore.shared
     private let router = Router.shared
 
@@ -49,8 +50,19 @@ struct LibraryView: View {
         }
         .searchable(text: $search, placement: .toolbar, prompt: "Search names, tags, folders")
         .toolbar {
+            Picker("View", selection: $showsGrid) {
+                Label("List", systemImage: "list.bullet").tag(false)
+                Label("Thumbnails", systemImage: "square.grid.2x2").tag(true)
+            }
+            .pickerStyle(.segmented)
+            .help("Show the library as a list or as thumbnails")
             Button("Refresh", systemImage: "arrow.clockwise") { Task { await store.refreshAll() } }
                 .keyboardShortcut("r")
+        }
+        // Finder's shortcuts for its icon and list views
+        .background {
+            Button("Thumbnails") { showsGrid = true }.keyboardShortcut("1").hidden()
+            Button("List") { showsGrid = false }.keyboardShortcut("2").hidden()
         }
         .sheet(isPresented: $pairing) { PairingSheet() }
         .confirmationDialog("Remove this account?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), presenting: removing) { account in
@@ -104,12 +116,17 @@ struct LibraryView: View {
                 if let problem = store.problem { Banner(problem) }
                 if let problem = account.problem { Banner(problem) }
                 if let library = account.library {
-                    ItemTable(items: items(in: library, at: place), library: library, selection: $selected) { item in
+                    let open = { (item: LibraryItem) in
                         if item.kind == .folder {
                             self.place = Place(account: account.id, folder: item.id)
                         } else {
                             router.open(.document(id: item.id, page: nil))
                         }
+                    }
+                    if showsGrid {
+                        ItemGrid(items: items(in: library, at: place), library: library, account: account, selection: $selected, open: open)
+                    } else {
+                        ItemTable(items: items(in: library, at: place), library: library, selection: $selected, open: open)
                     }
                 } else {
                     ProgressView("Loading the library…").frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -150,7 +167,7 @@ struct ItemTable: View {
     var body: some View {
         Table(items, selection: $selection) {
             TableColumn("Name") { item in
-                Label(item.name, systemImage: icon(item.kind))
+                Label(item.name, systemImage: item.kind.symbol)
             }
             TableColumn("Modified") { item in
                 Text(item.lastModified?.formatted(date: .abbreviated, time: .shortened) ?? "")
@@ -163,22 +180,35 @@ struct ItemTable: View {
         }
         .contextMenu(forSelectionType: LibraryItem.ID.self) { ids in
             if ids.count == 1, let id = ids.first, let item = library.items[id] {
-                Button("Open") { open(item) }
-                Divider()
-                Button("Copy Link") { Clipboard.copy(link(item).url.absoluteString) }
-                Button("Copy as Markdown Link") { Clipboard.copy(link(item).markdown(title: item.name)) }
+                ItemMenu(item: item, open: open)
             }
         } primaryAction: { ids in
             for id in ids { if let item = library.items[id] { open(item) } }
         }
     }
 
-    private func link(_ item: LibraryItem) -> RemoraLink {
-        item.kind == .folder ? .folder(id: item.id) : .document(id: item.id, page: nil)
-    }
+}
 
-    private func icon(_ kind: LibraryItem.Kind) -> String {
-        switch kind {
+/// What an item's context menu offers, in the list and in the grid.
+struct ItemMenu: View {
+    let item: LibraryItem
+    let open: (LibraryItem) -> Void
+
+    var body: some View {
+        Button("Open") { open(item) }
+        Divider()
+        Button("Copy Link") { Clipboard.copy(item.link.url.absoluteString) }
+        Button("Copy as Markdown Link") { Clipboard.copy(item.link.markdown(title: item.name)) }
+    }
+}
+
+extension LibraryItem {
+    var link: RemoraLink { kind == .folder ? .folder(id: id) : .document(id: id, page: nil) }
+}
+
+extension LibraryItem.Kind {
+    var symbol: String {
+        switch self {
         case .folder: "folder"
         case .notebook: "book.closed"
         case .pdf: "doc.richtext"
