@@ -158,6 +158,7 @@ struct NotebookView: View {
     }
 
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
+        DocumentDragHandle(item: item)
         ToolbarItemGroup {
             Button("Zoom Out", systemImage: "minus.magnifyingglass") { zoom = clampZoom(zoom / 1.25) }
                 .keyboardShortcut("-")
