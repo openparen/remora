@@ -12,7 +12,7 @@
   --text: #1d1d1f;
   --muted: #5f5f66;
   --line: #e4e1da;
-  --accent: #0f7476;
+  --accent: #8a5530;
   --code: #f1efe9;
   --serif: "Newsreader", Georgia, serif;
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
@@ -26,7 +26,7 @@
     --text: #ececef;
     --muted: #a1a1aa;
     --line: #2e2e33;
-    --accent: #5ec4c4;
+    --accent: #dcab7a;
     --code: #26262a;
   }
 }
@@ -76,11 +76,13 @@ section { padding: 72px 0; border-top: 1px solid var(--line); }
 
 /* Header */
 .top { display: flex; align-items: center; gap: 10px; padding-block: 20px; }
-.top .home { color: inherit; text-decoration: none; font-family: var(--serif); font-size: 1.4rem; font-weight: 600; }
+.top .home { display: flex; align-items: center; gap: 10px; color: inherit; text-decoration: none; font-family: var(--serif); font-size: 1.4rem; font-weight: 600; }
+.top img { width: 32px; height: 32px; }
 .top nav { margin-left: auto; display: flex; gap: 18px; font-size: 0.95rem; }
 .top nav a { color: var(--muted); text-decoration: none; }
 
 /* Hero */
+.hero .icon { width: 112px; height: 112px; }
 .hero { text-align: center; padding-block: 56px 40px; }
 .hero .lede { font-size: 1.2rem; color: var(--muted); max-width: 32em; margin: 0 auto 0.6em; }
 .hero .name { font-family: var(--serif); font-style: italic; color: var(--muted); margin-bottom: 2em; }
