@@ -112,6 +112,12 @@ footer a { color: inherit; }
 footer .sig { margin-left: auto; font-family: var(--serif); font-style: italic; }
 footer .legal { margin: 16px 0 0; font-size: 0.8rem; }
 
+/* Screenshots: window captures, their shadow is part of the image */
+.shot { margin: 1.5em auto 0; text-align: center; }
+.shot img { display: block; width: 100%; height: auto; margin: 0 auto; }
+.shot img + img { margin-top: 0.5em; }
+.shot.tall img { max-width: 420px; }
+
 /* Plain pages */
 .page { padding-block: 32px 64px; }
 .page h1 { font-size: clamp(2.2rem, 6vw, 3rem); }

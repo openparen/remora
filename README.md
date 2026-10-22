@@ -6,6 +6,8 @@ A native Mac reader for your reMarkable cloud. Notebooks, PDFs and EPUBs with yo
 
 Remora is the fish that rides along on something bigger.
 
+<p align="center"><img src="site/img/shot-library.png" width="700" alt="Remora's library showing a folder of PDFs and an EPUB as thumbnails"></p>
+
 ## Why
 
 Most of my thinking happens on the tablet: meeting notes, sketches, the margins of whatever I'm reading. My other notes live on the Mac, and I wanted the two to meet. So Remora gives every page an address. Copy a link to page 3 of yesterday's meeting, paste it into a note, and a click later the page is in front of you, with whatever you've added since.
@@ -47,6 +49,8 @@ rmr://folder/<folder-id>
 ```
 
 Ids are reMarkable's own, so a link survives renames, moves and page reordering. A link to a page that was deleted opens the document and says so.
+
+<p align="center"><img src="site/img/shot-note.png" width="420" alt="A TextEdit note with a clickable rmr:// link to a page"> <img src="site/img/shot-reminder.png" width="420" alt="A Reminders to-do with an rmr:// page link in its notes"></p>
 
 ## Privacy
 
