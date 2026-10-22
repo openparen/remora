@@ -14,7 +14,16 @@ struct PDFDocumentView: View {
     @State private var problem: String?
     @State private var currentIndex = 0
     @State private var missingPage = false
+    /// Clockwise quarter turns, remembered per document.
+    @State private var turns: Int
     private let router = Router.shared
+
+    init(account: AccountState, item: LibraryItem, firstPage: String?) {
+        self.account = account
+        self.item = item
+        self.firstPage = firstPage
+        _turns = State(initialValue: ViewTurns.get(item.id))
+    }
 
     var body: some View {
         content
@@ -30,7 +39,7 @@ struct PDFDocumentView: View {
             VStack(spacing: 0) {
                 if missingPage { Banner("The linked page is no longer in this document.") }
                 // a new model is a new PDF: give it a new view rather than one still showing the old
-                PDFKitView(model: model, currentIndex: $currentIndex)
+                PDFKitView(model: model, item: item, turns: turns, currentIndex: $currentIndex)
                     .id(ObjectIdentifier(model))
             }
             .onAppear { go(to: router.pageRequest[item.id]?.page ?? firstPage) }
@@ -49,6 +58,12 @@ struct PDFDocumentView: View {
                 .keyboardShortcut("0")
             Button("Zoom In", systemImage: "plus.magnifyingglass") { model?.view?.zoomIn(nil) }
                 .keyboardShortcut("=")
+            Button("Rotate", systemImage: "rotate.right") {
+                turns = (turns + 1) % 4
+                ViewTurns.set(item.id, turns)
+            }
+            .keyboardShortcut("r", modifiers: [.command, .shift])
+            .help("Turn the pages a quarter clockwise")
             Button("Copy Link to Page", systemImage: "link") { Clipboard.copy(currentLink.url.absoluteString) }
                 .keyboardShortcut("l")
             Menu("More Links", systemImage: "ellipsis.circle") {
@@ -140,6 +155,9 @@ struct PDFDocumentView: View {
     /// EPUB chapter links seen so far, by target: the page they're on and their text.
     private var chapterLinks: [String: (index: Int, title: String)] = [:]
     private var pageStarts: Task<[String], Never>?
+    /// Each page's own /Rotate, as the tablet shows it; the view's turns come on top.
+    private var baseRotation: [Int] = []
+    private(set) var turns = 0
     /// The overlays on screen, so changed ink can be redrawn in place.
     private var overlays: [Int: WeakOverlay] = [:]
     private struct WeakOverlay { weak var view: InkOverlayView? }
@@ -161,7 +179,33 @@ struct PDFDocumentView: View {
                 page.setBounds(CGRect(origin: .zero, size: PDFPlacement.insertedPageSize(blankGeometry)), for: .mediaBox)
             }
             pdf.insert(page, at: index)
+            baseRotation.append((page.rotation % 360 + 360) % 360)
         }
+    }
+
+    /// The page's /Rotate as the tablet shows it, without the view's turns.
+    func baseRotation(_ index: Int) -> Int { baseRotation.indices.contains(index) ? baseRotation[index] : 0 }
+
+    /// Turn every page `turns` quarters clockwise past its own rotation.
+    func turn(to turns: Int) {
+        guard turns != self.turns else { return }
+        self.turns = turns
+        for (index, base) in baseRotation.enumerated() { pdf.page(at: index)?.rotation = (base + 90 * turns) % 360 }
+        view?.layoutDocumentView()
+    }
+
+    /// The page as shown, with its ink and the view's turns, at twice its size in points.
+    func image(at index: Int) async -> CGImage? {
+        guard document.pages.indices.contains(index), let page = pdf.page(at: index) else { return nil }
+        let (ref, document, blobs, turns) = (document.pages[index], document, blobs, turns)
+        if isInserted(index) {
+            return (try? await document.render(ref, scale: 2, blobs: blobs))?.image.turned(turns)
+        }
+        guard let cgPage = page.pageRef else { return nil }
+        let crop = cgPage.getBoxRect(.cropBox).size
+        let width = cgPage.rotationAngle % 180 == 0 ? crop.width : crop.height
+        let ink = try? await document.ink(ref, blobs: blobs)
+        return Thumbnail.pdfPage(cgPage, ink: ink, width: width * 2)?.turned(turns)
     }
 
     func go(to index: Int) {
@@ -278,12 +322,15 @@ struct PDFDocumentView: View {
 /// PDFView with an ink overlay on every page.
 struct PDFKitView: NSViewRepresentable {
     let model: PDFModel
+    let item: LibraryItem
+    let turns: Int
     @Binding var currentIndex: Int
 
-    func makeCoordinator() -> Coordinator { Coordinator(model: model, currentIndex: $currentIndex) }
+    func makeCoordinator() -> Coordinator { Coordinator(model: model, item: item, currentIndex: $currentIndex) }
 
     func makeNSView(context: Context) -> PDFView {
-        let view = PDFView()
+        let view = PagePDFView()
+        view.pageMenu = { [coordinator = context.coordinator] index in coordinator.menuItems(for: index) }
         view.displayMode = .singlePageContinuous
         view.displayDirection = .vertical
         view.autoScales = true
@@ -298,16 +345,37 @@ struct PDFKitView: NSViewRepresentable {
         return view
     }
 
-    func updateNSView(_ view: PDFView, context: Context) {}
+    func updateNSView(_ view: PDFView, context: Context) {
+        model.turn(to: turns)
+    }
 
     // PDFKit calls both on the main thread; @preconcurrency checks that at run time
     @MainActor final class Coordinator: NSObject, @preconcurrency PDFPageOverlayViewProvider, @preconcurrency PDFViewDelegate {
         let model: PDFModel
+        let item: LibraryItem
         let currentIndex: Binding<Int>
 
-        init(model: PDFModel, currentIndex: Binding<Int>) {
+        init(model: PDFModel, item: LibraryItem, currentIndex: Binding<Int>) {
             self.model = model
+            self.item = item
             self.currentIndex = currentIndex
+        }
+
+        /// What a right-click on page `index` offers, above PDFKit's own items.
+        func menuItems(for index: Int) -> [NSMenuItem] {
+            guard model.document.pages.indices.contains(index) else { return [] }
+            let (page, item, model) = (model.document.pages[index], item, model)
+            let link = RemoraLink.document(id: item.id, page: page.id)
+            return [
+                ActionMenuItem("Copy Link to This Page") { Clipboard.copy(link.url.absoluteString) },
+                ActionMenuItem("Copy as Markdown Link") { Clipboard.copy(link.markdown(title: item.name, pageNumber: page.number)) },
+                ActionMenuItem("Copy Link to Document") { Clipboard.copy(RemoraLink.document(id: item.id, page: nil).url.absoluteString) },
+                .separator(),
+                ActionMenuItem("Copy Page as Image") { Task { if let image = await model.image(at: index) { PageImage.copy(image) } } },
+                ActionMenuItem("Save Page as Image…") {
+                    Task { if let image = await model.image(at: index) { PageImage.save(image, name: "\(item.name) p\(page.number)") } }
+                },
+            ]
         }
 
         func pdfView(_ view: PDFView, overlayViewFor page: PDFPage) -> NSView? {
@@ -338,6 +406,20 @@ struct PDFKitView: NSViewRepresentable {
     }
 }
 
+/// PDFView whose right-click menu starts with the clicked page's own actions.
+final class PagePDFView: PDFView {
+    var pageMenu: ((Int) -> [NSMenuItem])?
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let menu = super.menu(for: event) ?? NSMenu()
+        guard let document, let page = page(for: convert(event.locationInWindow, from: nil), nearest: true),
+              let items = pageMenu?(document.index(for: page)), !items.isEmpty else { return menu }
+        menu.insertItem(.separator(), at: 0)
+        for item in items.reversed() { menu.insertItem(item, at: 0) }
+        return menu
+    }
+}
+
 /// Draws one page's ink and highlights, as vectors, in the page's own frame.
 // ponytail: the overlay is the page's size, so v6 ink drawn past the page edge is cut off; outset it if that matters
 final class InkOverlayView: NSView {
@@ -365,7 +447,8 @@ final class InkOverlayView: NSView {
         guard ink != nil || inserted, let context = NSGraphicsContext.current?.cgContext else { return }
         // the page as displayed: its crop box with any rotation applied
         let crop = page.bounds(for: .cropBox).size
-        let rotation = (page.rotation % 360 + 360) % 360
+        // the page's own rotation: the view's turns rotate the overlay along with the page
+        let rotation = model.baseRotation(index)
         let displayed = rotation % 180 == 0 ? crop : CGSize(width: crop.height, height: crop.width)
         context.saveGState()
         defer { context.restoreGState() }

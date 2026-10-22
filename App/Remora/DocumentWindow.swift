@@ -70,8 +70,17 @@ struct NotebookView: View {
     @State private var latestEdit: String?
     /// Bumped by the toolbar to scroll to `latestEdit`.
     @State private var jumpRequest = 0
+    /// Clockwise quarter turns, remembered per document.
+    @State private var turns: Int
     @GestureState private var pinch = 1.0
     private let router = Router.shared
+
+    init(account: AccountState, item: LibraryItem, firstPage: String?) {
+        self.account = account
+        self.item = item
+        self.firstPage = firstPage
+        _turns = State(initialValue: ViewTurns.get(item.id))
+    }
 
     var body: some View {
         content
@@ -106,8 +115,9 @@ struct NotebookView: View {
                     LazyVStack(spacing: 16) {
                         ForEach(document.pages, id: \.id) { page in
                             PageView(document: document, page: page, blobs: account.sync.blobs,
-                                     renderWidth: renderWidth, shownWidth: shownWidth)
+                                     renderWidth: renderWidth, shownWidth: shownWidth, turns: turns)
                                 .id(page.id)
+                                .contextMenu { PageMenu(item: item, page: page) { await image(of: page, in: document) } }
                                 .onGeometryChange(for: Bool.self) { frame in
                                     let box = frame.frame(in: .named("viewport"))
                                     return box.minY <= readingLine && box.maxY > readingLine
@@ -129,6 +139,7 @@ struct NotebookView: View {
                 }
                 // keep the reading position when the pages change size
                 .onChange(of: zoom) { if let currentPageID { proxy.scrollTo(currentPageID, anchor: .top) } }
+                .onChange(of: turns) { if let currentPageID { proxy.scrollTo(currentPageID, anchor: .top) } }
                 .onChange(of: jumpRequest) {
                     if let latestEdit {
                         withAnimation { proxy.scrollTo(latestEdit, anchor: .top) }
@@ -154,6 +165,12 @@ struct NotebookView: View {
                 .keyboardShortcut("0")
             Button("Zoom In", systemImage: "plus.magnifyingglass") { zoom = clampZoom(zoom * 1.25) }
                 .keyboardShortcut("=")
+            Button("Rotate", systemImage: "rotate.right") {
+                turns = (turns + 1) % 4
+                ViewTurns.set(item.id, turns)
+            }
+            .keyboardShortcut("r", modifiers: [.command, .shift])
+            .help("Turn the pages a quarter clockwise, for a notebook written sideways")
             Button("Copy Link to Page", systemImage: "link") { Clipboard.copy(currentLink.url.absoluteString) }
                 .keyboardShortcut("l")
             Menu("More Links", systemImage: "ellipsis.circle") {
@@ -183,6 +200,16 @@ struct NotebookView: View {
 
     private func clampZoom(_ value: Double) -> Double { min(4, max(0.25, value)) }
 
+    /// The page as shown, at twice the tablet's resolution, or once if that's too large.
+    private func image(of page: PageRef, in document: Document) async -> CGImage? {
+        for scale in [2.0, 1.0] {
+            if let image = try? await document.render(page, scale: scale, blobs: account.sync.blobs).image {
+                return image.turned(turns)
+            }
+        }
+        return nil
+    }
+
     private func load() async {
         do {
             let fresh = try await Document.load(item, blobs: account.sync.blobs)
@@ -210,14 +237,17 @@ struct PageView: View {
     let blobs: BlobStore
     let renderWidth: Double
     let shownWidth: Double
+    /// Clockwise quarter turns.
+    let turns: Int
 
     @Environment(\.displayScale) private var displayScale
     @State private var rendered: (image: CGImage, template: PageTemplate?, drops: PageDrops)?
     @State private var problem: String?
 
     var body: some View {
+        let upright = document.content.orientation == .landscape ? 3.0 / 4 : 4.0 / 3
         let aspect = rendered.map { Double($0.image.height) / Double($0.image.width) }
-            ?? (document.content.orientation == .landscape ? 3.0 / 4 : 4.0 / 3)
+            ?? (turns % 2 == 0 ? upright : 1 / upright)
         ZStack(alignment: .topTrailing) {
             if let rendered {
                 Image(decorative: rendered.image, scale: 1).resizable().interpolation(.high)
@@ -242,7 +272,7 @@ struct PageView: View {
         .accessibilityLabel("Page \(page.number)")
         // re-render when the settled width moves a step, not on every pixel of a resize
         .task(id: RenderKey(page: page.id, ink: document.inkFile(page)?.hash, template: page.template,
-                            width: Int(renderWidth * displayScale / 256))) {
+                            width: Int(renderWidth * displayScale / 256), turns: turns)) {
             await render()
         }
         .onDisappear { rendered = nil }
@@ -253,18 +283,20 @@ struct PageView: View {
         let ink: String?
         let template: String?
         let width: Int
+        let turns: Int
     }
 
     private func render() async {
         let pixels = (renderWidth * displayScale / 256).rounded(.up) * 256
-        let pageWidth = document.content.orientation == .landscape ? 1872.0 : 1404.0
-        var scale = min(4, pixels / pageWidth)
+        // the side that's across the window: the page's height once it's turned a quarter
+        let across = (document.content.orientation == .landscape) != (turns % 2 == 1) ? 1872.0 : 1404.0
+        var scale = min(4, pixels / across)
         // ponytail: one bitmap per page, so ink dragged far off the page halves the scale until it fits; tile for deep zoom
         for _ in 0..<4 {
             do {
                 let result = try await document.render(page, scale: scale, blobs: blobs)
                 guard !Task.isCancelled else { return }
-                rendered = result
+                rendered = (result.image.turned(turns) ?? result.image, result.template, result.drops)
                 problem = nil
                 return
             } catch FlatRenderer.RenderError.tooLarge {
