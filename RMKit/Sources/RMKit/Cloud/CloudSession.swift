@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 public struct RootHash: Sendable, Equatable, Codable {
     public let hash: String
@@ -21,11 +22,11 @@ public actor CloudSession {
     }
 
     private let deviceToken: String
-    let http: HTTP
+    private let http: HTTP
     private let auth: AuthClient
-    let syncHostOverride: URL?
-    /// This device's id, so the app can ignore the notifications its own syncs cause.
-    nonisolated let deviceID: String?
+    private let syncHostOverride: URL?
+    /// The device token's `device-id`: `listen` skips the notices this device's own syncs send.
+    private let deviceID: String?
     private var current: Task<Authorized, Error>?
     private let failureCooldown: Duration
     private var lastFailure: (error: any Error, until: ContinuousClock.Instant)?
@@ -56,7 +57,7 @@ public actor CloudSession {
     /// it, so the next call after a failure tries again.
     /// `replacing` is the token that just got a 401: a newer one is reused,
     /// that one is refreshed once however many requests saw it fail.
-    func authorized(replacing stale: String? = nil) async throws -> Authorized {
+    private func authorized(replacing stale: String? = nil) async throws -> Authorized {
         // a token that is only nearing expiry still works; keep it if the refresh fails
         var stillValid: Authorized?
         if let current {
@@ -131,4 +132,81 @@ public actor CloudSession {
             return request
         }
     }
+
+    /// Hold the notification socket open and call `changed` for every sync
+    /// another device completes. Pings every `ping` and drops a socket whose
+    /// last ping went unanswered; reopens every `reopen` regardless. Reconnects
+    /// after `backoff`, doubling while connections keep failing.
+    func listen(
+        ping: Duration = .seconds(60),
+        reopen: Duration = .seconds(3600),
+        backoff: Duration = .seconds(1),
+        _ changed: @Sendable () -> Void
+    ) async {
+        var failures = 0
+        var stale: String?
+        while !Task.isCancelled {
+            var token: String?
+            var socket: URLSessionWebSocketTask?
+            var opened: ContinuousClock.Instant?
+            let pongs = Pongs()
+            do {
+                let auth = try await authorized(replacing: stale)
+                token = auth.token
+                stale = nil
+                let host = syncHostOverride ?? CloudHosts.sync(tectonic: auth.claims.tectonic)
+                var parts = URLComponents(url: host.appending(path: "notifications/ws/json/1"), resolvingAgainstBaseURL: false)!
+                parts.scheme = host.scheme == "http" ? "ws" : "wss"
+                var request = URLRequest(url: parts.url!)
+                request.setValue("Bearer \(auth.token)", forHTTPHeaderField: "Authorization")
+                let task = http.session.webSocketTask(with: request)
+                socket = task
+                task.resume()
+                let start = ContinuousClock.now
+                opened = start
+                // an unanswered ping is a half-open socket: cancelling it makes receive() throw
+                let pinger = Task {
+                    var sent = 0
+                    while true {
+                        try await Task.sleep(for: ping)
+                        guard pongs.count.load(ordering: .relaxed) == sent, .now - start < reopen else {
+                            task.cancel(with: .goingAway, reason: nil)
+                            return
+                        }
+                        sent += 1
+                        task.sendPing { if $0 == nil { pongs.count.wrappingAdd(1, ordering: .relaxed) } }
+                    }
+                }
+                defer {
+                    pinger.cancel()
+                    task.cancel(with: .goingAway, reason: nil)
+                }
+                // receive() ignores task cancellation; closing the socket ends it
+                try await withTaskCancellationHandler {
+                    while true {
+                        if case .string(let text) = try await task.receive(),
+                           let notice = Notices.parse(text), notice.sourceDeviceID != deviceID {
+                            changed()
+                        }
+                    }
+                } onCancel: {
+                    task.cancel(with: .goingAway, reason: nil)
+                }
+            } catch {
+                if Task.isCancelled { return }
+                // only a refused handshake says the token is bad, not a close or a drop
+                if (socket?.response as? HTTPURLResponse)?.statusCode == 401 { stale = token }
+            }
+            // a socket that was up a while closing is routine, not a failure to back off from
+            let healthy = pongs.count.load(ordering: .relaxed) > 0 || opened.map { .now - $0 >= ping } == true
+            failures = healthy ? 1 : min(failures + 1, 7)
+            let delay = min(.seconds(60), backoff * (1 << (failures - 1)))
+            try? await Task.sleep(for: delay * Double.random(in: 1...1.2))
+        }
+    }
+}
+
+/// Pongs back on one socket, counted from URLSession's callback queue.
+private final class Pongs: Sendable {
+    let count = Atomic(0)
 }

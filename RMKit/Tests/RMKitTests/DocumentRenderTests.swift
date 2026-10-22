@@ -14,4 +14,10 @@ import Testing
         let unknown = PageRef(id: "p2", number: 2, sourcePage: nil, template: "P Checklist")
         #expect(try await document.render(unknown, scale: 0.5, blobs: store).template == nil)
     }
+
+    @Test func findsItsOwnPDF() {
+        let files = ["other.pdf", "d.content", "d.pdf", "d/p1.rm"].map { Entry(hash: fakeHash(1), id: $0, subfiles: 0, size: 1) }
+        #expect(Document(id: "d", files: files, content: DocumentContent(), pages: []).pdfFile?.id == "d.pdf")
+        #expect(Document(id: "d", files: [files[0]], content: DocumentContent(), pages: []).pdfFile == nil)
+    }
 }

@@ -42,6 +42,17 @@ import Testing
         #expect(abs(p.x - (1024.6 - 200)) < 1e-9 && abs(p.y - 100) < 1e-9)
     }
 
+    @Test func v5InkInALandscapeDocumentLandsAsBeforeItWasTurned() {
+        // normalize turns landscape v5 ink; placement must see the raw screen point again
+        let letter = CGSize(width: 612, height: 792)
+        let portrait = PDFPlacement.transform(for: page(version: 5), displayed: letter)
+        let landscape = PDFPlacement.transform(for: page(version: 5, orientation: .landscape), displayed: letter)
+        let raw = CGPoint(x: 300, y: 700)
+        let turned = CGPoint(x: 1872 - raw.y, y: raw.x)
+        let (a, b) = (raw.applying(portrait), turned.applying(landscape))
+        #expect(abs(a.x - b.x) < 1e-9 && abs(a.y - b.y) < 1e-9)
+    }
+
     @Test func anInsertedPageIsTheScreenAtTheV6Scale() {
         let size = PDFPlacement.insertedPageSize(PageGeometry(portrait: nil, orientation: .portrait))
         #expect(abs(size.width - 1404 * 72 / 227) < 1e-9)

@@ -2,8 +2,8 @@ import Foundation
 
 /// The v6 scene format: a sequence of typed blocks building a CRDT scene tree.
 /// Ported from rmapi-js `rm6.js` (MIT), which follows rmscene (MIT).
-/// Only the blocks that carry ink are read; text, glyphs, authors and page
-/// info are skipped here.
+/// Only the blocks that carry ink and text highlights (glyphs) are read;
+/// text, authors and page info are skipped here.
 enum RMV6 {
     static func parse(_ data: Data) throws -> RMPage {
         let reader = ByteReader(data, offset: rmHeaderLength)

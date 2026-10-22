@@ -3,9 +3,11 @@ import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 
-/// Flat ink with Core Graphics: the same runs and paint as the SVG port,
-/// unrounded. A translucent stroke is drawn in one transparency layer, so its
-/// overlapping runs don't darken each other.
+/// Flat ink with Core Graphics: the same stroke runs and paint as the SVG
+/// port, unrounded, plus text highlights, which only this renderer draws (the
+/// SVG leaves them out to stay byte-identical with rm2agent). A translucent
+/// stroke is drawn in one transparency layer, so its overlapping runs don't
+/// darken each other.
 public enum FlatRenderer {
     public enum RenderError: Error {
         case badScale(Double)

@@ -26,7 +26,8 @@ public struct PageDrops: Sendable, Equatable {
     public var clampedPressures = 0
     public var unreadableBlocks = 0
 
-    /// Erasers and hidden layers are the page as the user left it; the rest is loss.
+    /// Erasers and hidden layers are the page as the user left it; the rest
+    /// means content may be missing, ink or highlights.
     public var isLossy: Bool {
         emptyStrokes + nonFinitePoints + clampedWidths + clampedPressures + unreadableBlocks > 0
     }

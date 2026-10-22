@@ -20,7 +20,16 @@ public enum PDFPlacement {
             let k = pointsPerPixel
             return CGAffineTransform(a: k, b: 0, c: 0, d: k, tx: displayed.width / 2 - page.geometry.width / 2 * k, ty: 0)
         }
-        // v3/v5: the page fitted to the portrait screen, anchored top-left, not centred
+        // v3/v5: measured in the portrait screen's coordinates; normalize turned a landscape document's ink, so turn it back
+        // ponytail: v3/v5 ink on a landscape PDF is unmeasured; it's placed as on a portrait one
+        let screen = page.geometry.orientation == .landscape
+            ? CGAffineTransform(a: 0, b: -1, c: 1, d: 0, tx: 0, ty: page.geometry.width)
+            : .identity
+        return screen.concatenating(fitted(displayed))
+    }
+
+    /// v3/v5: the page fitted to the portrait screen, anchored top-left, not centred.
+    private static func fitted(_ displayed: CGSize) -> CGAffineTransform {
         let (w, h) = (displayed.width, displayed.height)
         if w <= h {
             let s = min(1404 / w, 1872 / h)
