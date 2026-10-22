@@ -21,7 +21,7 @@ public enum Thumbnail {
     }
 
     /// A PDF page as shown (crop box, /Rotate applied) `width` pixels wide, its ink on top.
-    static func pdfPage(_ page: CGPDFPage, ink: NormalizedPage?, width: Double) -> CGImage? {
+    public static func pdfPage(_ page: CGPDFPage, ink: NormalizedPage?, width: Double) -> CGImage? {
         let crop = page.getBoxRect(.cropBox).size
         let displayed = page.rotationAngle % 180 == 0 ? crop : CGSize(width: crop.height, height: crop.width)
         guard displayed.width > 0, displayed.height > 0, width > 0 else { return nil }
