@@ -152,7 +152,8 @@ import Testing
     /// not their characters: neither a run past the cap nor runs at it count.
     @Test func onlyTheLastTextBlockIsExpanded() throws {
         var data = v6Header()
-        for i in 0..<20 {
+        // 60 blocks: expanding each would take ~10x the limit, not a margin a fast machine could hide
+        for i in 0..<60 {
             let run = UInt32(i < 10 ? RootText.maxChars + 1 : RootText.maxChars)
             data.append(contentsOf: blockBytes(type: 0x07, body: rootTextBody(items: textItem(CrdtID(author: 1, counter: 1), deleted: run), count: 1)))
         }

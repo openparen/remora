@@ -1,6 +1,6 @@
 """Writes nested-anchors.rm with rmscene and prints rmc's offsets for its strokes.
 
-Run with rmscene and rmc installed: python make_nested_anchors.py
+Run from this directory, with rmscene and rmc installed: python make_nested_anchors.py
 Synthetic, no user data. Adapted from a reviewer's script for Remora.
 
 Text: "Hi" + 3 deleted chars, then "\\nYo" as a heading, box at (-400, 500).

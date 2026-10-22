@@ -79,6 +79,13 @@ import Testing
         #expect(darkest(image, x: 50..<100, y: 1235..<image.height) < 100)
     }
 
+    @Test func aLongParagraphDoesNotWidenThePage() throws {
+        var ink = page([])
+        ink.text = [TextLine(style: .plain, text: String(repeating: "long paragraph ", count: 40), x: 234, y: 300)]
+        let image = try FlatRenderer.image(ink, scale: 1)
+        #expect(Double(image.width) == (try SVG.paintBox(ink)).width.rounded(.up))
+    }
+
     @Test func drawingTextLeavesTheTextMatrixAsItWas() throws {
         let context = try #require(CGContext(
             data: nil, width: 10, height: 10, bitsPerComponent: 8, bytesPerRow: 0,

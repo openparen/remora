@@ -103,16 +103,16 @@ public enum FlatRenderer {
         }
     }
 
-    /// The SVG's box grown to cover the typed text too, which the SVG leaves out:
-    /// a long note runs past the page like ink can.
+    /// The SVG's box grown down to cover the typed text too, which the SVG leaves
+    /// out: a long note runs past the page bottom like ink can. Only down: a
+    /// paragraph is one unwrapped line, and widening for it would shrink the page.
+    // ponytail: no word wrap, so a long paragraph runs off the right edge; wrap at RootText.width to fix
     static func paintBox(_ page: NormalizedPage) throws -> Box {
         var box = try SVG.paintBox(page)
         for (line, at) in typeset(page.text) {
-            var ascent: CGFloat = 0, descent: CGFloat = 0
-            let width = CTLineGetTypographicBounds(line, &ascent, &descent, nil)
-            let left = min(box.x, at.x), top = min(box.y, at.y - ascent)
-            let right = max(box.x + box.width, at.x + width), bottom = max(box.y + box.height, at.y + descent)
-            box = Box(x: left, y: top, width: right - left, height: bottom - top)
+            var descent: CGFloat = 0
+            CTLineGetTypographicBounds(line, nil, &descent, nil)
+            box.height = max(box.y + box.height, at.y + descent) - box.y
         }
         return box
     }
