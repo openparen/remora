@@ -179,7 +179,7 @@ struct ItemTable: View {
                 .width(min: 40, ideal: 50)
         } rows: {
             ForEach(items) { item in
-                TableRow(item).itemProvider { item.link.itemProvider(title: item.name) }
+                TableRow(item).itemProvider { item.link.itemProvider(title: item.dragTitle) }
             }
         }
         .contextMenu(forSelectionType: LibraryItem.ID.self) { ids in

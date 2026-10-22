@@ -2,6 +2,20 @@ import AppKit
 import RMKit
 import UniformTypeIdentifiers
 
+extension LibraryItem {
+    /// How a dropped link reads in another app, e.g. "Remora: Inbox (Notebook)".
+    var dragTitle: String {
+        let kind = switch self.kind {
+        case .notebook: "Notebook"
+        case .pdf: "PDF"
+        case .epub: "EPUB"
+        case .folder: "Folder"
+        case .template: "Template"
+        }
+        return "Remora: \(name) (\(kind))"
+    }
+}
+
 extension RemoraLink {
     /// What a drag to another app carries, best first; each app takes what it
     /// understands. A browser or Finder gets the URL and its name (Finder makes a
