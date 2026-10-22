@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Remora: a Mac reader for your reMarkable notebooks</title>
+  <meta name="description" content="A native Mac reader for your reMarkable cloud. Notebooks, PDFs and EPUBs with your ink, live while you write, and a link to every page. Open source.">
+  <meta property="og:title" content="Remora: a Mac reader for your reMarkable notebooks">
+  <meta property="og:description" content="Your handwriting, one link away.">
+  <meta property="og:url" content="https://remora.open-paren.dev/">
+  <link rel="preload" href="fonts/newsreader-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="wrap top">
+    <a class="home" href="./">Remora</a>
+    <nav><a href="#install">Install</a><a href="#privacy">Privacy</a><a href="https://github.com/gveres/remora">GitHub</a></nav>
+  </header>
+
+  <main>
+    <div class="wrap hero">
+      <h1>Your handwriting,<br>one link away.</h1>
+      <p class="lede">A native Mac reader for your reMarkable cloud. Notebooks, PDFs and EPUBs with your ink on them, live while you write, and a link to every page.</p>
+      <p class="name">Remora, the fish that rides along on something bigger.</p>
+      <div class="cta">
+        <span class="badge">Open source, coming soon</span>
+        <a href="mailto:hello@open-paren.dev?subject=Remora">Tell me when it ships</a>
+      </div>
+    </div>
+
+    <section>
+      <div class="wrap">
+        <h2>Why I built it</h2>
+        <p>Most of my thinking happens on the tablet: meeting notes, sketches, the margins of whatever I'm reading. My other notes live on the Mac, and I wanted the two to meet.</p>
+        <p>So Remora gives every page an address. Copy a link to page 3 of yesterday's meeting, paste it into a note, and a click later the page is in front of you, with whatever you've added since.</p>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <h2>A link to every page</h2>
+        <p>Every document, folder and page has a stable <code>rmr://</code> link. Copy Link to Page (⌘L) or Copy as Markdown Link, and paste it into Obsidian, Bear, a calendar invite or a to-do. Clicking it opens Remora at that page, or scrolls the window that's already open.</p>
+        <pre tabindex="0"><code>[Design review p.3](rmr://doc/6f2c…?page=a91e…)</code></pre>
+        <p class="muted">Links name no account and no title, so they keep working when you rename or move things.</p>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <h2>Live while you write</h2>
+        <p>An open notebook redraws as the tablet syncs: only the pages that changed, without losing your place or zoom. If the edit happened on a page you can't see, Remora offers to jump to it.</p>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <h2>Everything on the tablet</h2>
+        <div class="grid">
+          <div><h3>Notebooks</h3><p>Your ink, coloured and pressure-sensitive, on its lined, grid or dotted template.</p></div>
+          <div><h3>PDFs and EPUBs</h3><p>Ink and highlights over the page, where you put them. Links in a PDF and an EPUB's table of contents work.</p></div>
+          <div><h3>The library</h3><p>Folders, pinned items and search across names, tags and folder paths. Several accounts side by side.</p></div>
+          <div><h3>Fast, and offline</h3><p>Remora opens from its cache, then syncs. What it has seen before is there without a connection.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="privacy">
+      <div class="wrap">
+        <h2>Your notes stay yours</h2>
+        <div class="points">
+          <div>
+            <h3>Only reMarkable's cloud</h3>
+            <p>Remora talks to reMarkable's cloud and nothing else. No server of mine, no account, no analytics.</p>
+          </div>
+          <div>
+            <h3>The key stays in Keychain</h3>
+            <p>You pair it once with a code from my.remarkable.com. The device token lives in your Mac's Keychain, the cache in your Caches folder.</p>
+          </div>
+          <div>
+            <h3>Your ink is never touched</h3>
+            <p>Remora reads your notebooks. It never edits what you've written.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="install">
+      <div class="wrap">
+        <h2>Install</h2>
+        <p>Once the first release is out, with Homebrew:</p>
+        <pre tabindex="0"><code>brew install --cask gveres/tap/remora</code></pre>
+        <p>or download the app from <a href="https://github.com/gveres/remora/releases">GitHub releases</a>.</p>
+        <p class="muted">Needs macOS 26 or later and a reMarkable account with cloud sync (Connect). Remora uses reMarkable's cloud the way their own apps do, without an official API, so a change on their side can break it until it's fixed here.</p>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <h2>Open source</h2>
+        <p>Remora is MIT-licensed and written in Swift. The code, issues and releases are on <a href="https://github.com/gveres/remora">GitHub</a>. Bug reports are very welcome, especially from accounts and tablets that aren't mine.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <a href="https://github.com/gveres/remora">GitHub</a>
+      <a href="#privacy">Privacy</a>
+      <a href="mailto:hello@open-paren.dev">hello@open-paren.dev</a>
+      <span class="sig">Made for people who think on paper. Happy writing! Gabor</span>
+    </div>
+    <div class="wrap">
+      <p class="legal">reMarkable® is a registered trademark of reMarkable AS. Remora is an independent open-source app, not affiliated with or endorsed by reMarkable AS.</p>
+    </div>
+  </footer>
+</body>
+</html>
