@@ -165,7 +165,7 @@ struct ItemTable: View {
     let open: (LibraryItem) -> Void
 
     var body: some View {
-        Table(items, selection: $selection) {
+        Table(of: LibraryItem.self, selection: $selection) {
             TableColumn("Name") { item in
                 Label(item.name, systemImage: item.kind.symbol)
             }
@@ -177,6 +177,10 @@ struct ItemTable: View {
                 .width(min: 60, ideal: 80)
             TableColumn("Pages") { item in Text(item.pageCount.map(String.init) ?? "") }
                 .width(min: 40, ideal: 50)
+        } rows: {
+            ForEach(items) { item in
+                TableRow(item).itemProvider { item.link.itemProvider(title: item.name) }
+            }
         }
         .contextMenu(forSelectionType: LibraryItem.ID.self) { ids in
             if ids.count == 1, let id = ids.first, let item = library.items[id] {

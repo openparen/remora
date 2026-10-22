@@ -18,6 +18,7 @@ struct ItemGrid: View {
                         .onTapGesture(count: 2) { open(item) }
                         .simultaneousGesture(TapGesture().onEnded { selection = [item.id] })
                         .contextMenu { ItemMenu(item: item, open: open) }
+                        .onDrag { item.link.itemProvider(title: item.name) }
                 }
             }
             .padding(20)
