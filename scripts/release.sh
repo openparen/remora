@@ -39,9 +39,30 @@ flags=$(sed -n 's/.*flags=\(0x[0-9a-f]*\).*/\1/p' <<<"$info")
 [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "$version" ] || fail "Info.plist version isn't $version"
 echo "ok  $app: Developer ID, timestamped, hardened runtime"
 
-# the DMG: the app and a link to /Applications to drag it onto
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
+notary=(--key "$ASC_KEY_PATH" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID")
+# notarize $1; on anything but Accepted, print Apple's log
+notarize() {
+  xcrun notarytool submit "$1" "${notary[@]}" --wait --output-format json >"$work/notary.json" || true
+  local id status
+  id=$(plutil -extract id raw -o - "$work/notary.json" 2>/dev/null || true)
+  status=$(plutil -extract status raw -o - "$work/notary.json" 2>/dev/null || true)
+  if [ "$status" != Accepted ]; then
+    cat "$work/notary.json" >&2
+    [ -z "$id" ] || xcrun notarytool log "$id" "${notary[@]}" >&2
+    fail "notarization of $1: ${status:-no result} (submission ${id:-none})"
+  fi
+  echo "ok  notarized $1: submission $id"
+}
+
+# the app itself, stapled, so a copy dragged out of the DMG opens offline too
+ditto -c -k --keepParent "$app" "$work/Remora.zip"
+notarize "$work/Remora.zip"
+xcrun stapler staple -q "$app"
+xcrun stapler validate -q "$app"
+
+# the DMG: the app and a link to /Applications to drag it onto
 mkdir "$work/Remora"
 ditto "$app" "$work/Remora/Remora.app"
 ln -s /Applications "$work/Remora/Applications"
@@ -51,17 +72,7 @@ rm -f "$dmg"
 hdiutil create -quiet -volname "Remora $version" -srcfolder "$work/Remora" -format UDZO "$dmg"
 codesign --sign "$REMORA_SIGN_IDENTITY" --timestamp "$dmg"
 
-# notarize; on anything but Accepted, print Apple's log
-notary=(--key "$ASC_KEY_PATH" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID")
-xcrun notarytool submit "$dmg" "${notary[@]}" --wait --output-format json >"$work/notary.json" || true
-id=$(plutil -extract id raw -o - "$work/notary.json" 2>/dev/null || true)
-status=$(plutil -extract status raw -o - "$work/notary.json" 2>/dev/null || true)
-if [ "$status" != Accepted ]; then
-  cat "$work/notary.json" >&2
-  [ -z "$id" ] || xcrun notarytool log "$id" "${notary[@]}" >&2
-  fail "notarization: ${status:-no result} (submission ${id:-none})"
-fi
-echo "ok  notarized: submission $id"
+notarize "$dmg"
 xcrun stapler staple -q "$dmg"
 xcrun stapler validate -q "$dmg"
 spctl -a -vvv -t open --context context:primary-signature "$dmg" 2>&1 | tee "$work/spctl.txt"
