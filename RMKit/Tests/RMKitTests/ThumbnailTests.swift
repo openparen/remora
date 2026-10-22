@@ -6,14 +6,16 @@ import Testing
 
 @Suite struct ThumbnailTests {
     /// A one-page PDF of `size` points with a black 50 pt square whose top-left
-    /// corner is at `corner` (top-left origin), turned by `rotation`, cropped to `crop`.
-    func pdf(_ size: CGSize, square corner: CGPoint = .zero, rotation: Int = 0, crop: CGRect? = nil) throws -> CGPDFPage {
+    /// corner is at `corner` (top-left origin; nil for none) and a black band
+    /// `band` points tall across its top, turned by `rotation`, cropped to `crop`.
+    func pdf(_ size: CGSize, square corner: CGPoint? = .zero, band: CGFloat = 0, rotation: Int = 0, crop: CGRect? = nil) throws -> CGPDFPage {
         let data = NSMutableData()
         var box = CGRect(origin: .zero, size: size)
         let context = try #require(CGContext(consumer: CGDataConsumer(data: data)!, mediaBox: &box, nil))
         context.beginPDFPage(nil)
         context.setFillColor(CGColor(gray: 0, alpha: 1))
-        context.fill(CGRect(x: corner.x, y: size.height - corner.y - 50, width: 50, height: 50)) // PDF space is y up
+        if let corner { context.fill(CGRect(x: corner.x, y: size.height - corner.y - 50, width: 50, height: 50)) } // PDF space is y up
+        if band > 0 { context.fill(CGRect(x: 0, y: size.height - band, width: size.width, height: band)) }
         context.endPDFPage()
         context.closePDF()
         let document = try #require(PDFDocument(data: data as Data))
@@ -57,13 +59,21 @@ import Testing
         #expect(gray(image, x: 140, y: 190) > 200)
     }
 
+    @Test func nothingAboveTheCropBoxShows() throws {
+        // the bitmap is a fractional height rounded up; the extra row must not show what's above the crop box
+        let page = try pdf(CGSize(width: 600, height: 800), square: nil, band: 120, crop: CGRect(x: 100, y: 280, width: 300, height: 400))
+        let image = try #require(Thumbnail.pdfPage(page, ink: nil, width: 301))
+        #expect(gray(image, x: 150, y: 0) > 200)
+    }
+
     @Test func inkLandsWhereThePDFViewPutsIt() throws {
         // a v6 dot at the screen's horizontal centre, 227 px (one inch) down: the shown page's centre, 72 pt down;
         // on a page turned a quarter (800×600 as shown) at half scale, that's (200, 36)
         let dot = StrokePoint(x: 702, y: 227, width: 30, pressure: 1)
         let ink = NormalizedPage(strokes: [NormalizedStroke(points: [dot, dot], style: Palette.style(pen: .fineliner, color: .black, rgba: nil), id: nil)],
                                  drops: PageDrops(), geometry: PageGeometry(portrait: nil, orientation: .portrait), version: 6)
-        let page = try pdf(CGSize(width: 600, height: 800), square: CGPoint(x: 500, y: 700), rotation: 90)
+        // ponytail: at a fractional height, ink is placed from the page's top; the sub-pixel difference isn't asserted
+        let page = try pdf(CGSize(width: 600, height: 800), square: nil, rotation: 90)
         let image = try #require(Thumbnail.pdfPage(page, ink: ink, width: 400))
         #expect(image.width == 400 && image.height == 300)
         #expect(gray(image, x: 200, y: 36) < 100)

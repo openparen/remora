@@ -60,12 +60,15 @@ struct ItemCell: View {
         }
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(item.name), \(item.kind.rawValue)")
+        .accessibilityLabel("\(item.name), \(item.kind.name)")
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction { open(item) }
         .task(id: item.hash) {
             guard item.kind != .folder else { return }
-            thumbnail = await Thumbnails.shared.image(for: item, in: account).map { NSImage(cgImage: $0, size: .zero) }
+            let image = await Thumbnails.shared.image(for: item, in: account)
+            // a cancelled cell has scrolled away or moved on to a newer version of its item
+            guard !Task.isCancelled else { return }
+            thumbnail = image.map { NSImage(cgImage: $0, size: .zero) }
         }
     }
 }
@@ -87,13 +90,16 @@ struct ItemCell: View {
     func image(for item: LibraryItem, in account: AccountState) async -> CGImage? {
         if let image = memory.object(forKey: item.hash as NSString) { return image }
         if let task = rendering[item.hash] { return await task.value }
+        let (file, blobs) = (Self.file(item, account: account.id), account.sync.blobs)
+        if let image = await Task.detached(priority: .userInitiated, operation: { Self.read(file) }).value {
+            memory.setObject(image, forKey: item.hash as NSString, cost: image.bytesPerRow * image.height)
+            return image
+        }
         // a cell scrolled past in a fast scroll is cancelled here, before it queues a download
         do { try await Task.sleep(for: .milliseconds(150)) } catch { return nil }
         if let task = rendering[item.hash] { return await task.value }
-        let (file, blobs) = (Self.file(item, account: account.id), account.sync.blobs)
-        // ponytail: carries on when its cell scrolls away, so a fast scroll queues every item it passed; downloads are capped at 8
+        // ponytail: a render that has started runs to the end even if its cell scrolls away; downloads are capped at 8
         let task = Task.detached(priority: .utility) { () -> CGImage? in
-            if let image = Self.read(file) { return image }
             guard let document = try? await Document.load(item, blobs: blobs),
                   let image = try? await Thumbnail.render(document, width: Self.width, blobs: blobs) else { return nil }
             Self.write(image, to: file)

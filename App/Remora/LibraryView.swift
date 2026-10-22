@@ -173,7 +173,7 @@ struct ItemTable: View {
                 Text(item.lastModified?.formatted(date: .abbreviated, time: .shortened) ?? "")
             }
             .width(min: 120, ideal: 160)
-            TableColumn("Kind") { item in Text(item.kind.rawValue.capitalized) }
+            TableColumn("Kind") { item in Text(item.kind.name) }
                 .width(min: 60, ideal: 80)
             TableColumn("Pages") { item in Text(item.pageCount.map(String.init) ?? "") }
                 .width(min: 40, ideal: 50)
@@ -207,6 +207,17 @@ extension LibraryItem {
 }
 
 extension LibraryItem.Kind {
+    /// As people read it: "Notebook", "PDF", "EPUB".
+    var name: String {
+        switch self {
+        case .notebook: "Notebook"
+        case .pdf: "PDF"
+        case .epub: "EPUB"
+        case .folder: "Folder"
+        case .template: "Template"
+        }
+    }
+
     var symbol: String {
         switch self {
         case .folder: "folder"
