@@ -35,6 +35,14 @@ import Testing
         return Int(pixels[(y * image.width + x) * 4])
     }
 
+    @Test func anEPUBTheTabletHasNotRenderedHasNoThumbnail() async throws {
+        let json = #"{"fileType":"epub","originalPageCount":1,"pageCount":1,"pages":["p1"],"redirectionPageMap":[0]}"#
+        let content = try JSONDecoder().decode(DocumentContent.self, from: Data(json.utf8))
+        let document = Document(id: "d", files: [], content: content, pages: PageMap.pages(content: content, rmPageIDs: []))
+        let store = BlobStore(cache: BlobCache(directory: temporaryDirectory())) { _, _ in throw CloudError.offline }
+        #expect(try await Thumbnail.render(document, width: 150, blobs: store) == nil)
+    }
+
     @Test func aPDFPageIsDrawnAtTheWidthAskedUpright() throws {
         let image = try #require(Thumbnail.pdfPage(try pdf(CGSize(width: 600, height: 800)), ink: nil, width: 150))
         #expect(image.width == 150 && image.height == 200)

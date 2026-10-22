@@ -38,6 +38,9 @@ struct PDFDocumentView: View {
         if let model {
             VStack(spacing: 0) {
                 if missingPage { Banner("The linked page is no longer in this document.") }
+                if model.document.pages.first?.provisional == true {
+                    Banner("Links to single pages work once this document has been opened on the tablet.")
+                }
                 // a new model is a new PDF: give it a new view rather than one still showing the old
                 PDFKitView(model: model, item: item, turns: turns, currentIndex: $currentIndex)
                     .id(ObjectIdentifier(model))
@@ -70,7 +73,7 @@ struct PDFDocumentView: View {
                 .keyboardShortcut("l")
             Menu("More Links", systemImage: "ellipsis.circle") {
                 Button("Copy as Markdown Link") {
-                    Clipboard.copy(currentLink.markdown(title: item.name, pageNumber: currentPage?.number))
+                    Clipboard.copy(currentLink.markdown(title: item.name, pageNumber: currentPage?.linkID == nil ? nil : currentPage?.number))
                 }
                 Button("Copy Link to Document") { Clipboard.copy(RemoraLink.document(id: item.id, page: nil).url.absoluteString) }
             }
@@ -82,7 +85,7 @@ struct PDFDocumentView: View {
         return pages[currentIndex]
     }
 
-    private var currentLink: RemoraLink { .document(id: item.id, page: currentPage?.id) }
+    private var currentLink: RemoraLink { .document(id: item.id, page: currentPage?.linkID) }
 
     private var pageLabel: String {
         guard let model, let page = currentPage else { return "" }
@@ -103,8 +106,8 @@ struct PDFDocumentView: View {
         do {
             let document = try await Document.load(item, blobs: account.sync.blobs)
             // live: same PDF and the same pages, only ink changed; redraw that, keep the view and its scroll
-            if let model, model.canUpdate(to: document) {
-                model.update(to: document)
+            if let model, case let covered = document.coveringSource(pageCount: model.sourcePageCount), model.canUpdate(to: covered) {
+                model.update(to: covered)
                 return
             }
             guard let file = document.pdfFile else {
@@ -118,12 +121,17 @@ struct PDFDocumentView: View {
                 problem = "The PDF couldn't be read."
                 return
             }
-            // pages were added, removed or moved: rebuild, staying on the page that was being read
-            let reading = currentPage?.id
-            let fresh = PDFModel(document: document, source: source, sourceData: data, blobs: account.sync.blobs)
+            // a fresh upload's placeholder page list only knows the PDF's first page
+            let covered = document.coveringSource(pageCount: source.pageCount)
+            // pages were added, removed or moved: rebuild, staying on the page that was being read;
+            // a provisional page has no id the tablet's page list knows, only its place in the PDF
+            let reading = currentPage
+            let fresh = PDFModel(document: covered, source: source, sourceData: data, blobs: account.sync.blobs)
             model = fresh
             currentIndex = 0
-            if let reading, let index = document.pages.firstIndex(where: { $0.id == reading }) { fresh.go(to: index) }
+            let index = covered.pages.firstIndex { $0.id == reading?.id }
+                ?? (reading?.provisional == true ? covered.pages.firstIndex { $0.sourcePage == reading?.sourcePage } : nil)
+            if let index { fresh.go(to: index) }
             problem = nil
         } catch is CancellationError {
             return
@@ -184,6 +192,8 @@ struct PDFDocumentView: View {
             baseRotation.append((page.rotation % 360 + 360) % 360)
         }
     }
+
+    var sourcePageCount: Int { source.pageCount }
 
     /// The page's /Rotate as the tablet shows it, without the view's turns.
     func baseRotation(_ index: Int) -> Int { baseRotation.indices.contains(index) ? baseRotation[index] : 0 }
@@ -377,10 +387,12 @@ struct PDFKitView: NSViewRepresentable {
         func menuItems(for index: Int) -> [NSMenuItem] {
             guard model.document.pages.indices.contains(index) else { return [] }
             let (page, item, model) = (model.document.pages[index], item, model)
-            let link = RemoraLink.document(id: item.id, page: page.id)
+            let link = RemoraLink.document(id: item.id, page: page.linkID)
             return [
                 ActionMenuItem("Copy Link to This Page") { Clipboard.copy(link.url.absoluteString) },
-                ActionMenuItem("Copy as Markdown Link") { Clipboard.copy(link.markdown(title: item.name, pageNumber: page.number)) },
+                ActionMenuItem("Copy as Markdown Link") {
+                    Clipboard.copy(link.markdown(title: item.name, pageNumber: page.linkID == nil ? nil : page.number))
+                },
                 ActionMenuItem("Copy Link to Document") { Clipboard.copy(RemoraLink.document(id: item.id, page: nil).url.absoluteString) },
                 .separator(),
                 ActionMenuItem("Copy Page as Image") { Task { PageImage.copy(await model.image(at: index)) } },
@@ -489,4 +501,9 @@ final class InkOverlayView: NSView {
         default: .identity
         }
     }
+}
+
+extension PageRef {
+    /// The id a link to this page uses: none for a page whose id the tablet hasn't given yet.
+    var linkID: String? { provisional ? nil : id }
 }
