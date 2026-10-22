@@ -18,7 +18,7 @@ struct DocumentLink: Codable, Hashable {
 }
 
 /// Turns `rmr://` links into windows. Links can arrive before any view exists
-/// (launch by URL), so they wait until the Library hands over `openWindow`.
+/// (launch by URL), so they wait until the first window hands over `openWindow`.
 @MainActor @Observable final class Router {
     static let shared = Router()
 

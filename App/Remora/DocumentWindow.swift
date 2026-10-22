@@ -6,6 +6,7 @@ import SwiftUI
 struct DocumentWindow: View {
     let link: DocumentLink
     @State private var refreshedForMissing = false
+    @Environment(\.openWindow) private var openWindow
     private let store = AccountStore.shared
 
     var body: some View {
@@ -19,8 +20,7 @@ struct DocumentWindow: View {
                     case .notebook:
                         NotebookView(account: account, item: item, firstPage: link.pageID)
                     case .pdf, .epub:
-                        ContentUnavailableView("\(item.name)", systemImage: "doc.richtext",
-                                               description: Text("PDF and EPUB viewing arrives in the next build."))
+                        PDFDocumentView(account: account, item: item, firstPage: link.pageID)
                     case .folder, .template:
                         ContentUnavailableView("Not a document", systemImage: "folder")
                     }
@@ -41,6 +41,8 @@ struct DocumentWindow: View {
             }
         }
         .frame(minWidth: 480, minHeight: 600)
+        // a launch can restore document windows without the Library; links must still open
+        .onAppear { Router.shared.attach(openWindow) }
     }
 }
 
@@ -64,6 +66,10 @@ struct NotebookView: View {
     @State private var zoom = 1.0
     @State private var currentPageID: String?
     @State private var missingPage = false
+    /// The last page off screen whose ink changed while the window was open.
+    @State private var latestEdit: String?
+    /// Bumped by the toolbar to scroll to `latestEdit`.
+    @State private var jumpRequest = 0
     @GestureState private var pinch = 1.0
     private let router = Router.shared
 
@@ -123,6 +129,12 @@ struct NotebookView: View {
                 }
                 // keep the reading position when the pages change size
                 .onChange(of: zoom) { if let currentPageID { proxy.scrollTo(currentPageID, anchor: .top) } }
+                .onChange(of: jumpRequest) {
+                    if let latestEdit {
+                        withAnimation { proxy.scrollTo(latestEdit, anchor: .top) }
+                        self.latestEdit = nil
+                    }
+                }
             }
         }
         .background(Color(nsColor: .underPageBackgroundColor))
@@ -150,6 +162,11 @@ struct NotebookView: View {
                 }
                 Button("Copy Link to Document") { Clipboard.copy(RemoraLink.document(id: item.id, page: nil).url.absoluteString) }
             }
+            // last, so the other buttons don't shift when it comes and goes
+            if let number = document?.pages.first(where: { $0.id == latestEdit })?.number {
+                Button("Jump to Latest Edit (p. \(number))", systemImage: "pencil.and.scribble") { jumpRequest += 1 }
+                    .labelStyle(.titleAndIcon)
+            }
         }
     }
 
@@ -168,7 +185,14 @@ struct NotebookView: View {
 
     private func load() async {
         do {
-            document = try await Document.load(item, blobs: account.sync.blobs)
+            let fresh = try await Document.load(item, blobs: account.sync.blobs)
+            // live: which pages' ink changed since the window last loaded
+            if let old = document {
+                // the page being read redraws in place; only an edit elsewhere is worth a jump
+                let changed = fresh.pages.filter { fresh.inkFile($0)?.hash != old.inkFile($0)?.hash && $0.id != currentPageID }
+                if let last = changed.last { latestEdit = last.id }
+            }
+            document = fresh
             problem = nil
         } catch is CancellationError {
             return

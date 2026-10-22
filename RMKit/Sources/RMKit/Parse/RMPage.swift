@@ -43,8 +43,24 @@ public struct RMPage: Sendable {
     public var strokes: [RawStroke]
     /// Only v6 pages made on a device that knew its screen carry one.
     public var paperSize: PaperSize?
-    /// Blocks of a kind we read that failed to parse. Non-zero means ink may be missing.
+    /// Blocks of a kind we read that failed to parse. Non-zero means content
+    /// may be missing: ink or highlights.
     public var unreadableBlocks: Int
+    /// Text highlights (v6 glyph items): rectangles over PDF or typed text, back to front.
+    public var highlights: [RawHighlight] = []
+}
+
+/// A highlight over text, as the file stores it: rectangles in the same
+/// coordinates as stroke points.
+public struct RawHighlight: Sendable {
+    public struct Rect: Sendable, Equatable {
+        public var x, y, width, height: Double
+    }
+    public var color: InkColor
+    public var colorRgba: UInt32?
+    public var text: String
+    public var rects: [Rect]
+    public var hidden: Bool
 }
 
 public enum RMParseError: Error, Equatable {

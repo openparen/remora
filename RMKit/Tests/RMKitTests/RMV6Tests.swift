@@ -119,4 +119,45 @@ import Testing
         let page = try parseRM(data)
         #expect(page.unreadableBlocks > 0)
     }
+
+    /// A later tree-node block hiding the layer the highlights sit on hides them too.
+    @Test func aHighlightOnAHiddenLayerIsDropped() throws {
+        func lww(_ tagIndex: UInt64, _ value: [UInt8]) -> [UInt8] {
+            let body = idBytes(1, CrdtID(author: 1, counter: 999)) + value
+            return subblockHeaderBytes(tagIndex, length: body.count) + body
+        }
+        let label = varuintBytes(7) + [1] + Array("Layer 1".utf8)
+        let hide = idBytes(1, CrdtID(author: 0, counter: 11))
+            + lww(2, subblockHeaderBytes(2, length: label.count) + label)
+            + lww(3, varuintBytes(2 << 4 | 0x1) + [0])
+        var data = try Fixtures.data("Wikipedia_highlighted_p1", "rm")
+        #expect(normalize(try parseRM(data), orientation: .portrait).highlights.count == 4)
+        data.append(contentsOf: blockBytes(type: 0x02, body: hide))
+        let page = try parseRM(data)
+        #expect(page.unreadableBlocks == 0)
+        #expect(page.highlights.count == 4 && page.highlights.allSatisfy(\.hidden))
+        #expect(normalize(page, orientation: .portrait).highlights.isEmpty)
+    }
+}
+
+@Suite struct HighlightParseTests {
+    @Test func readsTextHighlightsInStrokeCoordinates() throws {
+        let page = try parseRM(try Fixtures.data("Wikipedia_highlighted_p1", "rm"))
+        #expect(page.unreadableBlocks == 0)
+        #expect(page.highlights.count == 4)
+        #expect(page.highlights[0].text.hasPrefix("The reMarkable uses electronic"))
+        #expect(page.highlights[0].color == .yellow)
+        let ink = normalize(page, orientation: .portrait)
+        // x is centre-relative like stroke points, so normalize shifts it by half the page
+        #expect(abs(ink.highlights[0].rects[0].minX - (page.highlights[0].rects[0].x + ink.geometry.width / 2)) < 1e-9)
+        #expect(ink.highlights[0].style.opacity == 0.35)
+    }
+
+    @Test func aHighlightsOwnColourWins() throws {
+        let page = try parseRM(try Fixtures.data("Color_and_tool_v3.14.4", "rm"))
+        #expect(page.highlights.first?.colorRgba == 0xff_ff_ed_75) // tag 10
+        let ink = normalize(page, orientation: .portrait)
+        #expect(ink.highlights.first?.style.color == "#ffed75")
+        #expect(ink.highlights.first?.style.opacity == 0.35)
+    }
 }

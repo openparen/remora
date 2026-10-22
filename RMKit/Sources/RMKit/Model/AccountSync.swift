@@ -12,6 +12,7 @@ public actor AccountSync {
     private let latestRoot: @Sendable () async throws -> RootHash
     private let rootFile: URL
     public private(set) var library: Library?
+    private var lastTrim: ContinuousClock.Instant?
 
     public init(account: String, session: CloudSession) {
         let directory = BlobCache.directory(account: account)
@@ -49,8 +50,14 @@ public actor AccountSync {
     /// current library when the cloud can't be read.
     public func refresh() async throws -> Library {
         let root = try await latestRoot()
-        // trim on every refresh: opening documents grows the cache even when the root doesn't change
-        defer { try? blobs.cache.evict() }
+        // opening documents grows the cache even when the root doesn't change; a trim walks the
+        // whole cache, so at most every ten minutes, not on every 30 s poll
+        defer {
+            if lastTrim.map({ $0.duration(to: .now) > .seconds(600) }) ?? true {
+                lastTrim = .now
+                try? blobs.cache.evict()
+            }
+        }
         if let library, library.root == root, library.failures.isEmpty { return library }
         let fresh = try await Library.build(root: root, previous: library, blobs: blobs)
         library = fresh

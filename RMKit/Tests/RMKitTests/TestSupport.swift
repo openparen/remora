@@ -32,7 +32,8 @@ final class StubProtocol: URLProtocol, @unchecked Sendable {
         return data
     }
 
-    override class func canInit(with request: URLRequest) -> Bool { true }
+    // websockets go to the real network: NoticeServer serves them
+    override class func canInit(with request: URLRequest) -> Bool { request.url?.scheme?.hasPrefix("http") == true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func stopLoading() {}
 

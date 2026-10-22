@@ -21,9 +21,12 @@ public struct PageGeometry: Sendable, Equatable {
         self.orientation = orientation
     }
 
-    /// v6 stores x relative to the page's horizontal centre; v3/v5 from the left edge.
+    /// v6 stores x relative to the page's horizontal centre; v3/v5 from the left
+    /// edge of the portrait screen, even in a landscape document, which the
+    /// tablet shows turned a quarter clockwise.
     func toPage(x: Double, y: Double, version: Int) -> (x: Double, y: Double) {
-        version == 6 ? (x + width / 2, y) : (x, y)
+        if version == 6 { return (x + width / 2, y) }
+        return orientation == .landscape ? (width - y, x) : (x, y)
     }
 }
 

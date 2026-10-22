@@ -41,6 +41,16 @@ import Testing
         #expect(abs(overlap - 166) <= 4) // 255 * (1 - 0.35)
     }
 
+    @Test func paintsAHighlight() throws {
+        var ink = page([])
+        ink.highlights = [Highlight(
+            rects: [CGRect(x: 100, y: 100, width: 200, height: 40)],
+            style: StrokeStyle(color: "#000000", opacity: 0.35, erase: false, pen: .highlighter), text: "x")]
+        let image = try FlatRenderer.image(ink, scale: 0.5)
+        #expect(abs(Int(red(image, 100, 60)) - 166) <= 4) // inside: 255 * (1 - 0.35)
+        #expect(red(image, 100, 120) > 250) // below it
+    }
+
     @Test func inkPushedFarOffThePageThrowsTooLarge() throws {
         let ink = page([stroke([(1_000_000, 100, 10)], opacity: 1)])
         do {

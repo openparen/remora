@@ -23,6 +23,16 @@ import Testing
         #expect(landscape.strokes[0].points == [StrokePoint(x: 936, y: 5, width: 2, pressure: 1)])
     }
 
+    @Test func v5InALandscapeDocumentIsTurnedAQuarterClockwise() {
+        let corners = [RawPoint(x: 0, y: 0, speed: 0, direction: 0, width: 2, pressure: 1),
+                       RawPoint(x: 1404, y: 1872, speed: 0, direction: 0, width: 2, pressure: 1)]
+        let page = RMPage(version: 5, strokes: [raw(.fineliner, points: corners)], paperSize: nil, unreadableBlocks: 0)
+        let ink = normalize(page, orientation: .landscape)
+        #expect(ink.geometry.width == 1872 && ink.geometry.height == 1404)
+        // the portrait screen's top-left is the landscape page's top-right
+        #expect(ink.strokes[0].points.map { [$0.x, $0.y] } == [[1872, 0], [0, 1404]])
+    }
+
     @Test func countsWhatItLeavesOut() {
         let point = RawPoint(x: 1, y: 1, speed: 0, direction: 0, width: 4, pressure: 100)
         let page = RMPage(version: 6, strokes: [

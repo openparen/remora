@@ -12,7 +12,7 @@ import RMKit
     private(set) var lastSynced: Date?
     /// Called with the email once an unlabelled account's label is looked up.
     @ObservationIgnored private let rememberLabel: (String) -> Void
-    /// The first load and refresh; cancelled when the account is removed or re-paired.
+    /// Loading, then following the account's changes; cancelled when it's removed or re-paired.
     @ObservationIgnored var starting: Task<Void, Never>?
 
     init(id: String, label: String, sync: AccountSync, rememberLabel: @escaping (String) -> Void) {
@@ -30,6 +30,11 @@ import RMKit
         if label == id, let email = try? await sync.session?.claims().email {
             label = email
             rememberLabel(email)
+        }
+        // live: refresh whenever the tablet (or anything else) syncs, and on a 30 s poll
+        guard let session = sync.session else { return }
+        for await _ in session.changes() {
+            await refresh()
         }
     }
 
@@ -122,7 +127,8 @@ import RMKit
 
     /// True while a library may still arrive or change, so "not found" can't be said yet.
     var stillLoading: Bool {
-        !loaded || accounts.contains { $0.syncing || ($0.library == nil && $0.problem == nil) }
+        // a background refresh of a library that's already here doesn't count: it would flicker every poll
+        !loaded || accounts.contains { $0.library == nil && ($0.syncing || $0.problem == nil) }
     }
 
     static func describePairing(_ error: Error) -> String {

@@ -2,8 +2,8 @@ import Foundation
 
 /// The v6 scene format: a sequence of typed blocks building a CRDT scene tree.
 /// Ported from rmapi-js `rm6.js` (MIT), which follows rmscene (MIT).
-/// Only the blocks that carry ink are read; text, glyphs, authors and page
-/// info are skipped here.
+/// Only the blocks that carry ink and text highlights (glyphs) are read;
+/// text, authors and page info are skipped here.
 enum RMV6 {
     static func parse(_ data: Data) throws -> RMPage {
         let reader = ByteReader(data, offset: rmHeaderLength)
@@ -43,6 +43,7 @@ private struct SceneBuilder {
     enum Value {
         case group(CrdtID)
         case line(RawStroke)
+        case glyph(RawHighlight)
     }
 
     struct Child {
@@ -67,6 +68,10 @@ private struct SceneBuilder {
             nodes[node, default: Node()].visible = visible
         case 0x04: // group item: a layer placed in its parent
             if let found = try Self.item(r, type: 0x02, { .group(try r.id(2)) }) {
+                nodes[found.parent, default: Node()].children.append(found.child)
+            }
+        case 0x03: // glyph item: a highlight over text
+            if let found = try Self.item(r, type: 0x01, { .glyph(try Self.glyph(r)) }) {
                 nodes[found.parent, default: Node()].children.append(found.child)
             }
         case 0x05: // line item: a stroke
@@ -148,6 +153,27 @@ private struct SceneBuilder {
             points: points, id: nil, hidden: false)
     }
 
+    /// rmapi-js `readGlyphValue`: optional start and length, colour, text, rectangles.
+    private static func glyph(_ r: ByteReader) throws -> RawHighlight {
+        if r.hasTag(2, .byte4) { _ = try r.int(2) } // start
+        if r.hasTag(3, .byte4) { _ = try r.int(3) } // length
+        let colorCode = Int(try r.int(4))
+        guard let color = InkColor(code: colorCode) else { throw RMParseError.unknownColor(colorCode) }
+        let text = try r.string(5)
+        let rects: [RawHighlight.Rect] = try r.subblock(6) {
+            guard let count = Int(exactly: try r.varuint()), count <= r.remaining / 32 else { throw RMParseError.truncated }
+            var rects: [RawHighlight.Rect] = []
+            rects.reserveCapacity(count)
+            for _ in 0..<count {
+                let x = try r.f64(), y = try r.f64(), w = try r.f64(), h = try r.f64()
+                rects.append(.init(x: x, y: y, width: w, height: h))
+            }
+            return rects
+        }
+        let rgba = r.hasTag(10, .byte4) ? try r.int(10) : nil
+        return RawHighlight(color: color, colorRgba: rgba, text: text, rects: rects, hidden: false)
+    }
+
     /// Groups past this nesting are not walked; real pages nest 1-2 levels, so
     /// this is only ever reached by a hostile or corrupted file.
     private static let maxWalkDepth = 64
@@ -158,6 +184,7 @@ private struct SceneBuilder {
     /// can be hidden.
     func page(unreadableBlocks: Int) -> RMPage {
         var strokes: [RawStroke] = []
+        var highlights: [RawHighlight] = []
         var visited: Set<CrdtID> = []
         var skippedForDepth = 0
         func walk(_ id: CrdtID, hidden: Bool, groupsOnly: Bool, depth: Int) {
@@ -176,7 +203,10 @@ private struct SceneBuilder {
                     stroke.id = child.itemID
                     stroke.hidden = hidden
                     strokes.append(stroke)
-                case .line:
+                case .glyph(var highlight) where !groupsOnly:
+                    highlight.hidden = hidden
+                    highlights.append(highlight)
+                case .line, .glyph:
                     break
                 }
             }
@@ -184,6 +214,6 @@ private struct SceneBuilder {
         walk(.root, hidden: false, groupsOnly: true, depth: 0)
         return RMPage(
             version: 6, strokes: strokes, paperSize: paperSize,
-            unreadableBlocks: unreadableBlocks + skippedForDepth)
+            unreadableBlocks: unreadableBlocks + skippedForDepth, highlights: highlights)
     }
 }
