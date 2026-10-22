@@ -51,9 +51,10 @@ public enum PageTemplate: Sendable, Equatable {
         Array(stride(from: start, to: length, by: spacing))
     }
 
-    /// Draw on a page-coordinate context, y down, before the ink.
-    public func draw(in context: CGContext, page: PageGeometry) {
-        let w = page.width, h = page.height
+    /// Draw on a page-coordinate context, y down, before the ink. `bottom` carries
+    /// the template on down a page the tablet lengthened past its own height.
+    public func draw(in context: CGContext, page: PageGeometry, bottom: Double? = nil) {
+        let w = page.width, h = max(page.height, bottom ?? 0)
         context.saveGState()
         defer { context.restoreGState() }
         context.setStrokeColor(CGColor(gray: Self.lineGray, alpha: 1))

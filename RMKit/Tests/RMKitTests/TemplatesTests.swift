@@ -46,6 +46,19 @@ import Testing
         #expect(ink(image, 700, 217) == 0) // halfway to the next line
     }
 
+    @Test func linesRunDownAPageLengthenedOnTheTablet() throws {
+        // a page the tablet scrolled past its bottom: ink at y 3000 on a 1872-tall rm2 page
+        let stroke = NormalizedStroke(
+            points: [StrokePoint(x: 100, y: 3000, width: 4, pressure: 1), StrokePoint(x: 120, y: 3000, width: 4, pressure: 1)],
+            style: StrokeStyle(color: "#000000", opacity: 1, erase: false, pen: .ballpoint))
+        let page = NormalizedPage(strokes: [stroke], drops: PageDrops(), geometry: rm2)
+        let image = try FlatRenderer.image(page, scale: 1, template: .lines(spacing: 78.7, top: 177.8))
+        #expect(image.height > 3000)
+        // line 34 sits at 177.8 + 34 * 78.7 = 2853.6, far below the page's own 1872
+        #expect(max(ink(image, 700, 2853), ink(image, 700, 2854)) > 20)
+        #expect(ink(image, 700, 2893) == 0) // halfway to the next line
+    }
+
     @Test func dotsSmallSitsOnTheFormulaOffset() {
         #expect(PageTemplate(name: "P Dots S", page: rm2) == .dots(spacing: 42.5, x: -234 - 22 + 1))
     }
