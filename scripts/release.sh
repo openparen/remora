@@ -89,4 +89,6 @@ git clone -q "git@github.com:$tap.git" "$work/tap"
 sed -i '' -e "s/^  version \".*\"/  version \"$version\"/" -e "s/^  sha256 \".*\"/  sha256 \"$sha\"/" "$work/tap/Casks/remora.rb"
 git -C "$work/tap" commit -qam "remora $version"
 git -C "$work/tap" push -q
+# the build itself isn't an install: left registered, it would compete for rmr:// links with the installed app
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "$app" || true
 echo "Released $tag: $dmg (cask in $tap updated)"
