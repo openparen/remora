@@ -9,6 +9,8 @@ public enum Thumbnail {
     // ponytail: a PDF's thumbnail downloads the whole PDF; the cache keeps it, but a huge book costs its size once
     public static func render(_ document: Document, width: Double, blobs: BlobStore) async throws -> CGImage? {
         guard let first = document.pages.first else { return nil }
+        // the tablet renders an EPUB to the PDF its pages sit on, the first time it opens it
+        if document.content.fileType == "epub", document.pdfFile == nil { return nil }
         if let file = document.pdfFile, let number = first.sourcePage {
             let data = try await blobs.data(hash: file.hash, name: file.id)
             guard let provider = CGDataProvider(data: data as CFData), let pdf = CGPDFDocument(provider),
