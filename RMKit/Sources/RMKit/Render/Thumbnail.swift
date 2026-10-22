@@ -41,7 +41,7 @@ public enum Thumbnail {
         context.restoreGState()
         if let ink {
             // ink runs top-left, y down, on the page as shown
-            context.translateBy(x: 0, y: CGFloat(h))
+            context.translateBy(x: 0, y: displayed.height * scale) // the page's top, not the rounded-up bitmap's
             context.scaleBy(x: scale, y: -scale)
             context.concatenate(PDFPlacement.transform(for: ink, displayed: displayed))
             try? FlatRenderer.draw(ink, in: context)

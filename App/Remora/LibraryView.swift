@@ -124,7 +124,7 @@ struct LibraryView: View {
                         }
                     }
                     if showsGrid {
-                        ItemGrid(items: items(in: library, at: place), library: library, account: account, selection: $selected, open: open)
+                        ItemGrid(items: items(in: library, at: place), account: account, selection: $selected, open: open)
                     } else {
                         ItemTable(items: items(in: library, at: place), library: library, selection: $selected, open: open)
                     }
