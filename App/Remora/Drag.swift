@@ -5,14 +5,7 @@ import UniformTypeIdentifiers
 extension LibraryItem {
     /// How a dropped link reads in another app, e.g. "Remora: Inbox (Notebook)".
     var dragTitle: String {
-        let kind = switch self.kind {
-        case .notebook: "Notebook"
-        case .pdf: "PDF"
-        case .epub: "EPUB"
-        case .folder: "Folder"
-        case .template: "Template"
-        }
-        return "Remora: \(name) (\(kind))"
+        "Remora: \(name) (\(kind.name))"
     }
 }
 
@@ -24,7 +17,8 @@ extension RemoraLink {
         let provider = NSItemProvider()
         provider.suggestedName = title
         let link = url.absoluteString
-        let html = "<a href=\"\(link)\">\(Self.escapeHTML(title))</a>"
+        // without a charset AppKit reads the fragment as Latin-1 and garbles "ő"
+        let html = "<meta charset=\"utf-8\"><a href=\"\(link)\">\(Self.escapeHTML(title))</a>"
         for (type, text) in [(UTType.url.identifier, link), ("public.url-name", title),
                              (UTType.html.identifier, html), (UTType.utf8PlainText.identifier, markdown(title: title))] {
             provider.registerDataRepresentation(forTypeIdentifier: type, visibility: .all) { done in
