@@ -21,9 +21,11 @@ public actor CloudSession {
     }
 
     private let deviceToken: String
-    private let http: HTTP
+    let http: HTTP
     private let auth: AuthClient
-    private let syncHostOverride: URL?
+    let syncHostOverride: URL?
+    /// This device's id, so the app can ignore the notifications its own syncs cause.
+    nonisolated let deviceID: String?
     private var current: Task<Authorized, Error>?
     private let failureCooldown: Duration
     private var lastFailure: (error: any Error, until: ContinuousClock.Instant)?
@@ -38,6 +40,7 @@ public actor CloudSession {
         failureCooldown: Duration = .seconds(30)
     ) {
         self.deviceToken = deviceToken
+        deviceID = (try? TokenClaims(jwt: deviceToken))?.deviceID
         http = HTTP(session: session)
         auth = AuthClient(session: session, host: authHost)
         syncHostOverride = syncHost
@@ -53,7 +56,7 @@ public actor CloudSession {
     /// it, so the next call after a failure tries again.
     /// `replacing` is the token that just got a 401: a newer one is reused,
     /// that one is refreshed once however many requests saw it fail.
-    private func authorized(replacing stale: String? = nil) async throws -> Authorized {
+    func authorized(replacing stale: String? = nil) async throws -> Authorized {
         // a token that is only nearing expiry still works; keep it if the refresh fails
         var stillValid: Authorized?
         if let current {

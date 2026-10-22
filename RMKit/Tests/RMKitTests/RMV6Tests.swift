@@ -120,3 +120,17 @@ import Testing
         #expect(page.unreadableBlocks > 0)
     }
 }
+
+@Suite struct HighlightParseTests {
+    @Test func readsTextHighlightsInStrokeCoordinates() throws {
+        let page = try parseRM(try Fixtures.data("Wikipedia_highlighted_p1", "rm"))
+        #expect(page.unreadableBlocks == 0)
+        #expect(page.highlights.count == 4)
+        #expect(page.highlights[0].text.hasPrefix("The reMarkable uses electronic"))
+        #expect(page.highlights[0].color == .yellow)
+        let ink = normalize(page, orientation: .portrait)
+        // x is centre-relative like stroke points, so normalize shifts it by half the page
+        #expect(abs(ink.highlights[0].rects[0].minX - (page.highlights[0].rects[0].x + ink.geometry.width / 2)) < 1e-9)
+        #expect(ink.highlights[0].style.opacity == 0.35)
+    }
+}

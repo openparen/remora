@@ -27,6 +27,12 @@ public struct Document: Sendable {
         return Document(id: item.id, files: files, content: content, pages: pages)
     }
 
+    /// The PDF the pages sit on: the document itself, or for an EPUB the PDF the
+    /// tablet rendered from it. nil for a notebook.
+    public var pdfFile: Entry? {
+        files.first { $0.id == "\(id).pdf" }
+    }
+
     /// The page's ink file; nil for a page nobody drew on.
     public func inkFile(_ page: PageRef) -> Entry? {
         files.first { $0.id == "\(id)/\(page.id).rm" }

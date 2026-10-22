@@ -21,6 +21,16 @@ public enum FlatRenderer {
         defer { context.restoreGState() }
         context.setLineCap(.round)
         context.setLineJoin(.round)
+        // highlights first, under the ink; one layer each so overlapping rectangles don't darken
+        for highlight in page.highlights where !highlight.rects.isEmpty {
+            context.saveGState()
+            context.setAlpha(highlight.style.opacity)
+            context.beginTransparencyLayer(auxiliaryInfo: nil)
+            context.setFillColor(color(highlight.style.color))
+            context.fill(highlight.rects)
+            context.endTransparencyLayer()
+            context.restoreGState()
+        }
         for stroke in page.strokes {
             let runs = try SVG.runs(stroke.points)
             guard !runs.isEmpty else { continue }

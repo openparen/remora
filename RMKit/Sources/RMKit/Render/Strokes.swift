@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 /// One sample along a stroke, in page coordinates.
@@ -35,6 +36,16 @@ public struct NormalizedPage: Sendable {
     public var strokes: [NormalizedStroke]
     public var drops: PageDrops
     public var geometry: PageGeometry
+    /// Text highlights, rectangles in page coordinates.
+    public var highlights: [Highlight] = []
+    /// The `.rm` version the page came from; PDF placement differs before v6.
+    public var version: Int = 6
+}
+
+public struct Highlight: Sendable, Equatable {
+    public var rects: [CGRect]
+    public var style: StrokeStyle
+    public var text: String
 }
 
 /// The narrowest a stroke is drawn; defensive, real widths start at 1.5.
@@ -87,5 +98,14 @@ public func normalize(_ page: RMPage, orientation: Orientation) -> NormalizedPag
         }
         strokes.append(NormalizedStroke(points: points, style: style, id: raw.id))
     }
-    return NormalizedPage(strokes: strokes, drops: drops, geometry: geometry)
+    let highlights = page.highlights.filter { !$0.hidden }.map { raw in
+        Highlight(
+            rects: raw.rects.map { rect in
+                let (x, y) = geometry.toPage(x: rect.x, y: rect.y, version: page.version)
+                return CGRect(x: x, y: y, width: rect.width, height: rect.height)
+            },
+            style: Palette.style(pen: .highlighter, color: raw.color, rgba: raw.colorRgba),
+            text: raw.text)
+    }
+    return NormalizedPage(strokes: strokes, drops: drops, geometry: geometry, highlights: highlights, version: page.version)
 }
