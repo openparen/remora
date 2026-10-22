@@ -167,6 +167,7 @@ public struct Library: Sendable {
             pinned: meta.pinned,
             tags: content?.tags ?? [],
             lastModified: meta.lastModified.flatMap(Double.init).map { Date(timeIntervalSince1970: $0 / 1000) },
-            pageCount: content?.pageCount)
+            // a fresh upload's count is the server's placeholder, not the PDF's
+            pageCount: content?.isUploadPlaceholder == true ? nil : content?.pageCount)
     }
 }

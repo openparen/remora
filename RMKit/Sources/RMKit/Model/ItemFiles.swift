@@ -34,6 +34,9 @@ public struct DocumentContent: Decodable, Sendable {
     public var fileType: String?
     public var orientation: Orientation
     public var pageCount: Int?
+    /// The source PDF's page count when the page list was made. 1 in the placeholder
+    /// reMarkable's server writes for a fresh upload, whatever the PDF holds.
+    public var originalPageCount: Int?
     /// The legacy page list: page ids in order. `null` on a never-opened document.
     /// A `nil` element is an unreadable page: it keeps its slot (and page number)
     /// but has no id of its own.
@@ -47,7 +50,7 @@ public struct DocumentContent: Decodable, Sendable {
     public var tags: [String]
 
     private enum Keys: String, CodingKey {
-        case fileType, orientation, pageCount, pages, redirectionPageMap, cPages, tags
+        case fileType, orientation, pageCount, originalPageCount, pages, redirectionPageMap, cPages, tags
     }
 
     /// Decodes one element of a list, or nil, so one bad element keeps its slot.
@@ -83,6 +86,7 @@ public struct DocumentContent: Decodable, Sendable {
         fileType = try? c.decodeIfPresent(String.self, forKey: .fileType)
         orientation = (try? c.decodeIfPresent(String.self, forKey: .orientation)) == "landscape" ? .landscape : .portrait
         pageCount = try? c.decodeIfPresent(Int.self, forKey: .pageCount)
+        originalPageCount = try? c.decodeIfPresent(Int.self, forKey: .originalPageCount)
         let pagesLenient = (try? c.decodeIfPresent([Lenient<String>].self, forKey: .pages)) ?? nil
         pages = pagesLenient?.map(\.value)
         let redirLenient = (try? c.decodeIfPresent([Lenient<Int>].self, forKey: .redirectionPageMap)) ?? nil
@@ -96,6 +100,12 @@ public struct DocumentContent: Decodable, Sendable {
         }
         cPages = (try? c.decodeIfPresent(CPagesBox.self, forKey: .cPages))?.pages ?? []
         tags = ((try? c.decodeIfPresent([Tag].self, forKey: .tags)) ?? []).map(\.name)
+    }
+
+    /// The page list reMarkable's server writes for a fresh upload: one page,
+    /// whatever the PDF holds. The tablet replaces it the first time it opens the document.
+    public var isUploadPlaceholder: Bool {
+        cPages.isEmpty && originalPageCount == 1 && pages?.count == 1
     }
 
     public init(orientation: Orientation = .portrait, pages: [String?]? = nil, redirectionPageMap: [Int?]? = nil, cPages: [CPage] = []) {

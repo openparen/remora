@@ -27,6 +27,35 @@ import Testing
         #expect(identity.map(\.sourcePage) == [1, 2])
     }
 
+    /// What reMarkable's server writes for an upload the tablet hasn't opened yet: one page, whatever the PDF holds.
+    static let freshUpload = #"{"fileType":"pdf","formatVersion":1,"originalPageCount":1,"pageCount":1,"pages":["p1"],"redirectionPageMap":[0]}"#
+
+    func document(_ content: DocumentContent) -> Document {
+        Document(id: "d", files: [], content: content, pages: PageMap.pages(content: content, rmPageIDs: []))
+    }
+
+    @Test func aFreshUploadCoversTheWholePDFWithPagesThatHaveNoLinksYet() throws {
+        let content = try JSONDecoder().decode(DocumentContent.self, from: Data(Self.freshUpload.utf8))
+        let covered = document(content).coveringSource(pageCount: 3)
+        #expect(covered.pages.map(\.number) == [1, 2, 3])
+        #expect(covered.pages.map(\.sourcePage) == [1, 2, 3])
+        #expect(covered.pages.map(\.provisional) == [true, true, true])
+        #expect(Set(covered.pages.map(\.id)).count == 3)
+        // a one-page PDF looks the same whether or not the tablet opened it: left as it is
+        #expect(document(content).coveringSource(pageCount: 1).pages.map(\.provisional) == [false])
+    }
+
+    @Test func aPageListTheTabletWroteIsLeftAlone() throws {
+        // one page shown of a three-page PDF on purpose: the other two were deleted on the tablet
+        let tablet = document(DocumentContent(cPages: [CPage(id: "a", idx: "a", redir: 0)])).coveringSource(pageCount: 3)
+        #expect(tablet.pages.map(\.id) == ["a"])
+        #expect(!tablet.pages[0].provisional)
+        let legacy = #"{"fileType":"pdf","originalPageCount":3,"pageCount":1,"pages":["a"],"redirectionPageMap":[0]}"#
+        let trimmed = document(try JSONDecoder().decode(DocumentContent.self, from: Data(legacy.utf8))).coveringSource(pageCount: 3)
+        #expect(trimmed.pages.map(\.id) == ["a"])
+        #expect(!trimmed.pages[0].provisional)
+    }
+
     @Test func noPageListFallsBackToTheInkFilesAndPagedata() {
         let pages = PageMap.pages(content: DocumentContent(pages: []), rmPageIDs: ["p1", "p2"], pagedata: ["Blank", "P Dots large"])
         #expect(pages.map(\.id) == ["p1", "p2"])

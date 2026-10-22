@@ -11,6 +11,9 @@ public struct PageRef: Sendable, Equatable {
     /// ignores this field.
     public let sourcePage: Int?
     public let template: String?
+    /// The page of a fresh upload the tablet hasn't opened yet: its id isn't the
+    /// tablet's, so a link to it would break once the tablet opens the document.
+    public var provisional = false
 }
 
 /// Page order from `.content`, ported from rm2agent `page-map.ts`. The schema

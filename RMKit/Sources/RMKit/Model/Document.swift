@@ -27,6 +27,21 @@ public struct Document: Sendable {
         return Document(id: item.id, files: files, content: content, pages: pages)
     }
 
+    /// The pages to show over a source PDF of `pageCount` pages. A fresh upload the
+    /// tablet hasn't opened has the server's placeholder page list: then every page
+    /// of the PDF, in order, all provisional. The tablet never writes a one-page list
+    /// with `originalPageCount` 1 over a longer PDF, so a page list it wrote, and any
+    /// one-page document, is kept as it is.
+    public func coveringSource(pageCount: Int) -> Document {
+        guard content.isUploadPlaceholder, pages.count == 1, pageCount > 1, let first = pages.first else { return self }
+        let covered = (1...pageCount).map { number in
+            var page = PageRef(id: number == 1 ? first.id : "\(first.id)-\(number)", number: number, sourcePage: number, template: nil)
+            page.provisional = true
+            return page
+        }
+        return Document(id: id, files: files, content: content, pages: covered)
+    }
+
     /// The PDF the pages sit on: the document itself, or for an EPUB the PDF the
     /// tablet rendered from it. nil for a notebook.
     public var pdfFile: Entry? {
