@@ -64,6 +64,7 @@ struct PDFDocumentView: View {
             }
             .keyboardShortcut("r", modifiers: [.command, .shift])
             .help("Turn the pages a quarter clockwise")
+            .accessibilityValue("\(turns * 90) degrees")
             Button("Copy Link to Page", systemImage: "link") { Clipboard.copy(currentLink.url.absoluteString) }
                 .keyboardShortcut("l")
             Menu("More Links", systemImage: "ellipsis.circle") {
@@ -186,26 +187,34 @@ struct PDFDocumentView: View {
     /// The page's /Rotate as the tablet shows it, without the view's turns.
     func baseRotation(_ index: Int) -> Int { baseRotation.indices.contains(index) ? baseRotation[index] : 0 }
 
-    /// Turn every page `turns` quarters clockwise past its own rotation.
+    /// Turn every page `turns` quarters clockwise past its own rotation, staying on the place being read.
     func turn(to turns: Int) {
         guard turns != self.turns else { return }
         self.turns = turns
+        let reading = view?.currentDestination
         for (index, base) in baseRotation.enumerated() { pdf.page(at: index)?.rotation = (base + 90 * turns) % 360 }
         view?.layoutDocumentView()
+        if let reading { view?.go(to: reading) }
     }
 
     /// The page as shown, with its ink and the view's turns, at twice its size in points.
     func image(at index: Int) async -> CGImage? {
-        guard document.pages.indices.contains(index), let page = pdf.page(at: index) else { return nil }
-        let (ref, document, blobs, turns) = (document.pages[index], document, blobs, turns)
-        if isInserted(index) {
-            return (try? await document.render(ref, scale: 2, blobs: blobs))?.image.turned(turns)
+        guard document.pages.indices.contains(index) else { return nil }
+        let (ref, document, blobs, turns, data) = (document.pages[index], document, blobs, turns, sourceData)
+        guard let number = ref.sourcePage else {
+            // an inserted page is the screen at the v6 scale, as in the view
+            let image = (try? await document.render(ref, scale: 2 * PDFPlacement.pointsPerPixel, blobs: blobs))?.image
+            return await Task.detached { image?.turned(turns) }.value
         }
-        guard let cgPage = page.pageRef else { return nil }
-        let crop = cgPage.getBoxRect(.cropBox).size
-        let width = cgPage.rotationAngle % 180 == 0 ? crop.width : crop.height
         let ink = try? await document.ink(ref, blobs: blobs)
-        return Thumbnail.pdfPage(cgPage, ink: ink, width: width * 2)?.turned(turns)
+        return await Task.detached { () -> CGImage? in
+            // from a PDF of its own: the view's pages share their CGPDFPage with the source,
+            // and turning them turns it, which would count the turns twice
+            guard let provider = CGDataProvider(data: data as CFData), let page = CGPDFDocument(provider)?.page(at: number) else { return nil }
+            let crop = page.getBoxRect(.cropBox).size
+            let width = page.rotationAngle % 180 == 0 ? crop.width : crop.height
+            return Thumbnail.pdfPage(page, ink: ink, width: width * 2)?.turned(turns)
+        }.value
     }
 
     func go(to index: Int) {
@@ -330,6 +339,8 @@ struct PDFKitView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> PDFView {
         let view = PagePDFView()
+        // turned before the first layout, so a held page jump lands where it should
+        model.turn(to: turns)
         view.pageMenu = { [coordinator = context.coordinator] index in coordinator.menuItems(for: index) }
         view.displayMode = .singlePageContinuous
         view.displayDirection = .vertical
@@ -371,9 +382,9 @@ struct PDFKitView: NSViewRepresentable {
                 ActionMenuItem("Copy as Markdown Link") { Clipboard.copy(link.markdown(title: item.name, pageNumber: page.number)) },
                 ActionMenuItem("Copy Link to Document") { Clipboard.copy(RemoraLink.document(id: item.id, page: nil).url.absoluteString) },
                 .separator(),
-                ActionMenuItem("Copy Page as Image") { Task { if let image = await model.image(at: index) { PageImage.copy(image) } } },
+                ActionMenuItem("Copy Page as Image") { Task { PageImage.copy(await model.image(at: index)) } },
                 ActionMenuItem("Save Page as Image…") {
-                    Task { if let image = await model.image(at: index) { PageImage.save(image, name: "\(item.name) p\(page.number)") } }
+                    Task { await PageImage.save(await model.image(at: index), name: "\(item.name) p\(page.number)") }
                 },
             ]
         }

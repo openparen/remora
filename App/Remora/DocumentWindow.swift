@@ -171,6 +171,7 @@ struct NotebookView: View {
             }
             .keyboardShortcut("r", modifiers: [.command, .shift])
             .help("Turn the pages a quarter clockwise, for a notebook written sideways")
+            .accessibilityValue("\(turns * 90) degrees")
             Button("Copy Link to Page", systemImage: "link") { Clipboard.copy(currentLink.url.absoluteString) }
                 .keyboardShortcut("l")
             Menu("More Links", systemImage: "ellipsis.circle") {
@@ -200,11 +201,18 @@ struct NotebookView: View {
 
     private func clampZoom(_ value: Double) -> Double { min(4, max(0.25, value)) }
 
-    /// The page as shown, at twice the tablet's resolution, or once if that's too large.
+    /// The page as shown, at twice the tablet's resolution, halved while that's too large.
     private func image(of page: PageRef, in document: Document) async -> CGImage? {
-        for scale in [2.0, 1.0] {
-            if let image = try? await document.render(page, scale: scale, blobs: account.sync.blobs).image {
-                return image.turned(turns)
+        let (blobs, turns) = (account.sync.blobs, turns)
+        var scale = 2.0
+        for _ in 0..<4 {
+            do {
+                let image = try await document.render(page, scale: scale, blobs: blobs).image
+                return await Task.detached { image.turned(turns) }.value
+            } catch FlatRenderer.RenderError.tooLarge {
+                scale /= 2
+            } catch {
+                return nil
             }
         }
         return nil
@@ -276,6 +284,8 @@ struct PageView: View {
             await render()
         }
         .onDisappear { rendered = nil }
+        // the placeholder takes the turned shape at once, so the pages above keep the reading position
+        .onChange(of: turns) { rendered = nil }
     }
 
     private struct RenderKey: Hashable {
@@ -295,8 +305,11 @@ struct PageView: View {
         for _ in 0..<4 {
             do {
                 let result = try await document.render(page, scale: scale, blobs: blobs)
+                // ponytail: turning makes a second bitmap, off the main thread; draw turned in FlatRenderer if memory bites
+                let turns = turns, image = result.image
+                let shown = await Task.detached { image.turned(turns) ?? image }.value
                 guard !Task.isCancelled else { return }
-                rendered = (result.image.turned(turns) ?? result.image, result.template, result.drops)
+                rendered = (shown, result.template, result.drops)
                 problem = nil
                 return
             } catch FlatRenderer.RenderError.tooLarge {
