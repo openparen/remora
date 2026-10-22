@@ -2,8 +2,9 @@ import Foundation
 
 /// The v6 scene format: a sequence of typed blocks building a CRDT scene tree.
 /// Ported from rmapi-js `rm6.js` (MIT), which follows rmscene (MIT).
-/// Only the blocks that carry ink and text highlights (glyphs) are read;
-/// text, authors and page info are skipped here.
+/// The blocks that carry ink, text highlights (glyphs), typed text and the
+/// groups' text anchors are read; authors and page info are skipped here.
+/// Root text and anchors follow rmscene (MIT), their layout rmc (MIT).
 enum RMV6 {
     static func parse(_ data: Data) throws -> RMPage {
         let reader = ByteReader(data, offset: rmHeaderLength)
@@ -53,19 +54,33 @@ private struct SceneBuilder {
 
     struct Node {
         var visible: Bool?
+        /// The text character (or special top/bottom anchor) this group moves with.
+        var anchor: CrdtID?
+        var anchorOriginX = 0.0
         var children: [Child] = []
     }
 
     var nodes: [CrdtID: Node] = [CrdtID.root: Node()]
     var paperSize: PaperSize?
+    var text: RootText?
 
     mutating func read(blockType: UInt8, version: UInt8, from r: ByteReader) throws {
         switch blockType {
-        case 0x02: // tree node: a layer's label and visibility
+        case 0x02: // tree node: a group's label, visibility and, since v3.x, text anchor
             let node = try r.id(1)
             _ = try r.lww(2) { try r.string(2) }
             let visible = try r.lww(3) { try r.bool(2) }
             nodes[node, default: Node()].visible = visible
+            if r.hasTag(7, .length4) {
+                let anchor = try r.lww(7) { try r.id(2) }
+                _ = try r.subblock(8, allowTrailing: true) {} // anchor type
+                _ = try r.subblock(9, allowTrailing: true) {} // anchor threshold
+                let originX = try r.lww(10) { try r.float(2) }
+                nodes[node, default: Node()].anchor = anchor
+                nodes[node, default: Node()].anchorOriginX = Double(originX)
+            }
+        case 0x07: // root text: the page's typed text
+            text = try Self.rootText(r)
         case 0x04: // group item: a layer placed in its parent
             if let found = try Self.item(r, type: 0x02, { .group(try r.id(2)) }) {
                 nodes[found.parent, default: Node()].children.append(found.child)
@@ -153,6 +168,65 @@ private struct SceneBuilder {
             points: points, id: nil, hidden: false)
     }
 
+    /// rmscene `RootTextBlock`: text items, paragraph styles, then the box's position and width.
+    private static func rootText(_ r: ByteReader) throws -> RootText {
+        _ = try r.id(1) // block id, always (0, 0)
+        var items: [RootText.Item] = []
+        var styles: [CrdtID: ParagraphStyle] = [:]
+        try r.subblock(2) {
+            try r.subblock(1) {
+                try r.subblock(1) {
+                    for _ in 0..<(try count(r)) {
+                        items.append(try r.subblock(0) {
+                            let id = try r.id(2), left = try r.id(3), right = try r.id(4)
+                            let deleted = Int(try r.int(5))
+                            var value = RootText.Item.Value.deleted(deleted)
+                            if deleted == 0 {
+                                value = .text("")
+                                if r.hasTag(6, .length4) {
+                                    value = try r.subblock(6) {
+                                        guard let length = Int(exactly: try r.varuint()) else { throw RMParseError.truncated }
+                                        _ = try r.u8() // is-ascii flag
+                                        let text = String(decoding: try r.raw(length), as: UTF8.self)
+                                        // a format code is stored on an empty string
+                                        if r.hasTag(2, .byte4) {
+                                            _ = try r.int(2)
+                                            return .format
+                                        }
+                                        return .text(text)
+                                    }
+                                }
+                            }
+                            return RootText.Item(id: id, left: left, right: right, value: value)
+                        })
+                    }
+                }
+            }
+            try r.subblock(2) {
+                try r.subblock(1) {
+                    for _ in 0..<(try count(r)) {
+                        let char = try r.crdtID() // untagged
+                        _ = try r.id(1) // timestamp
+                        let code = try r.subblock(2) {
+                            _ = try r.u8() // always 17
+                            return Int(try r.u8())
+                        }
+                        styles[char] = ParagraphStyle(rawValue: code) ?? .plain
+                    }
+                }
+            }
+        }
+        let (x, y) = try r.subblock(3) { (try r.f64(), try r.f64()) }
+        let width = Double(try r.float(4))
+        return try RootText(items: items, styles: styles, x: x, y: y, width: width)
+    }
+
+    /// A list's length; each entry takes at least a byte, so one past the bytes left is hostile.
+    private static func count(_ r: ByteReader) throws -> Int {
+        guard let count = Int(exactly: try r.varuint()), count <= r.remaining else { throw RMParseError.truncated }
+        return count
+    }
+
     /// rmapi-js `readGlyphValue`: optional start and length, colour, text, rectangles.
     private static func glyph(_ r: ByteReader) throws -> RawHighlight {
         if r.hasTag(2, .byte4) { _ = try r.int(2) } // start
@@ -182,38 +256,50 @@ private struct SceneBuilder {
     /// hides everything under it. The root's own `visible`, if a file sets
     /// one, is not honoured, matching rm2agent: only layers below the root
     /// can be hidden.
+    ///
+    /// A group anchored to the text moves with its anchor character: it is
+    /// offset by (its origin x, the character's laid-out y), and nested groups
+    /// add up, as rmc draws them.
     func page(unreadableBlocks: Int) -> RMPage {
         var strokes: [RawStroke] = []
         var highlights: [RawHighlight] = []
         var visited: Set<CrdtID> = []
         var skippedForDepth = 0
-        func walk(_ id: CrdtID, hidden: Bool, groupsOnly: Bool, depth: Int) {
+        let anchors = RootText.anchors(text, pageHeight: Double((paperSize ?? PageGeometry.defaultScreen).height))
+        func walk(_ id: CrdtID, hidden: Bool, groupsOnly: Bool, depth: Int, offset: (x: Double, y: Double)) {
             guard depth <= Self.maxWalkDepth else {
                 skippedForDepth += 1
                 return
             }
             guard let node = nodes[id], visited.insert(id).inserted else { return }
             let hidden = id == .root ? hidden : (hidden || node.visible == false)
+            var offset = offset
+            if let anchor = node.anchor {
+                // rmc: an anchor the text doesn't know still takes its x
+                offset = (offset.x + node.anchorOriginX, offset.y + (anchors[anchor] ?? 0))
+            }
             let ordered = Toposort.order(node.children, id: \.itemID, left: \.left, right: \.right)
             for child in ordered {
                 switch child.value {
                 case .group(let group):
-                    walk(group, hidden: hidden, groupsOnly: false, depth: depth + 1)
+                    walk(group, hidden: hidden, groupsOnly: false, depth: depth + 1, offset: offset)
                 case .line(var stroke) where !groupsOnly:
                     stroke.id = child.itemID
                     stroke.hidden = hidden
+                    stroke.anchorOffset = offset
                     strokes.append(stroke)
                 case .glyph(var highlight) where !groupsOnly:
                     highlight.hidden = hidden
+                    highlight.anchorOffset = offset
                     highlights.append(highlight)
                 case .line, .glyph:
                     break
                 }
             }
         }
-        walk(.root, hidden: false, groupsOnly: true, depth: 0)
+        walk(.root, hidden: false, groupsOnly: true, depth: 0, offset: (0, 0))
         return RMPage(
             version: 6, strokes: strokes, paperSize: paperSize,
-            unreadableBlocks: unreadableBlocks + skippedForDepth, highlights: highlights)
+            unreadableBlocks: unreadableBlocks + skippedForDepth, highlights: highlights, text: text)
     }
 }

@@ -30,6 +30,8 @@ public struct RawStroke: Sendable {
     public var id: CrdtID?
     /// On a layer the user hid.
     public var hidden: Bool
+    /// Where the stroke's anchored groups put it: add to every point. v6 only.
+    public var anchorOffset: (x: Double, y: Double) = (0, 0)
 }
 
 public struct PaperSize: Sendable, Equatable {
@@ -44,10 +46,12 @@ public struct RMPage: Sendable {
     /// Only v6 pages made on a device that knew its screen carry one.
     public var paperSize: PaperSize?
     /// Blocks of a kind we read that failed to parse. Non-zero means content
-    /// may be missing: ink or highlights.
+    /// may be missing: ink, highlights or typed text.
     public var unreadableBlocks: Int
     /// Text highlights (v6 glyph items): rectangles over PDF or typed text, back to front.
     public var highlights: [RawHighlight] = []
+    /// The typed text (v6 root text), if the page has any.
+    public var text: RootText?
 }
 
 /// A highlight over text, as the file stores it: rectangles in the same
@@ -61,6 +65,8 @@ public struct RawHighlight: Sendable {
     public var text: String
     public var rects: [Rect]
     public var hidden: Bool
+    /// As for `RawStroke`: add to every rectangle's origin.
+    public var anchorOffset: (x: Double, y: Double) = (0, 0)
 }
 
 public enum RMParseError: Error, Equatable {

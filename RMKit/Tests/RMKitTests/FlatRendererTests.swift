@@ -51,6 +51,26 @@ import Testing
         #expect(red(image, 100, 120) > 250) // below it
     }
 
+    /// The darkest red channel in a box of pixels, rows counted from the top.
+    func darkest(_ image: CGImage, x: Range<Int>, y: Range<Int>) -> UInt8 {
+        var pixels = [UInt8](repeating: 0, count: image.width * image.height * 4)
+        let context = CGContext(
+            data: &pixels, width: image.width, height: image.height, bitsPerComponent: 8,
+            bytesPerRow: image.width * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        return y.flatMap { row in x.map { pixels[(row * image.width + $0) * 4] } }.min() ?? 255
+    }
+
+    @Test func paintsTypedTextAboveItsBaseline() throws {
+        var ink = page([])
+        ink.text = [TextLine(style: .heading, text: "HHHH", x: 100, y: 200)]
+        let image = try FlatRenderer.image(ink, scale: 1)
+        #expect(darkest(image, x: 100..<200, y: 170..<200) < 60) // the letters, upright over the baseline
+        #expect(darkest(image, x: 100..<200, y: 202..<260) > 250) // nothing hangs below it
+        #expect(darkest(image, x: 0..<98, y: 0..<300) > 250) // nothing left of x
+    }
+
     @Test func inkPushedFarOffThePageThrowsTooLarge() throws {
         let ink = page([stroke([(1_000_000, 100, 10)], opacity: 1)])
         do {

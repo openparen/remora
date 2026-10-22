@@ -1,11 +1,12 @@
 import CoreGraphics
+import CoreText
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 
 /// Flat ink with Core Graphics: the same stroke runs and paint as the SVG
-/// port, unrounded, plus text highlights, which only this renderer draws (the
-/// SVG leaves them out to stay byte-identical with rm2agent). A translucent
+/// port, unrounded, plus typed text and text highlights, which only this
+/// renderer draws (the SVG leaves them out to stay byte-identical with rm2agent). A translucent
 /// stroke is drawn in one transparency layer, so its overlapping runs don't
 /// darken each other.
 public enum FlatRenderer {
@@ -23,7 +24,8 @@ public enum FlatRenderer {
         defer { context.restoreGState() }
         context.setLineCap(.round)
         context.setLineJoin(.round)
-        // highlights first, under the ink; one layer each so overlapping rectangles don't darken
+        drawText(page.text, in: context)
+        // highlights next, under the ink; one layer each so overlapping rectangles don't darken
         for highlight in page.highlights where !highlight.rects.isEmpty {
             context.saveGState()
             context.setAlpha(highlight.style.opacity)
@@ -57,6 +59,34 @@ public enum FlatRenderer {
                 context.endTransparencyLayer()
                 context.restoreGState()
             }
+        }
+    }
+
+    /// Typed text in the system sans, sized by eye against the tablet; list
+    /// markers as characters, the way rmc's text exporters show them.
+    static func drawText(_ lines: [TextLine], in context: CGContext) {
+        guard !lines.isEmpty else { return }
+        context.saveGState()
+        defer { context.restoreGState() }
+        context.textMatrix = CGAffineTransform(scaleX: 1, y: -1) // the context is y down
+        context.setFillColor(CGColor(gray: 0, alpha: 1))
+        for line in lines {
+            let (marker, size, font): (String, Double, CTFontUIFontType) = switch line.style {
+            case .heading: ("", 46, .emphasizedSystem)
+            case .bold: ("", 29, .emphasizedSystem)
+            case .bullet: ("•  ", 29, .system)
+            case .bullet2: ("      ◦  ", 29, .system)
+            case .checkbox: ("☐  ", 29, .system)
+            case .checkboxChecked: ("☑  ", 29, .system)
+            case .basic, .plain: ("", 29, .system)
+            }
+            guard let face = CTFontCreateUIFontForLanguage(font, size, nil) else { continue }
+            let string = NSAttributedString(string: marker + line.text, attributes: [
+                NSAttributedString.Key(kCTFontAttributeName as String): face,
+                NSAttributedString.Key(kCTForegroundColorFromContextAttributeName as String): true,
+            ])
+            context.textPosition = CGPoint(x: line.x, y: line.y)
+            CTLineDraw(CTLineCreateWithAttributedString(string), context)
         }
     }
 
