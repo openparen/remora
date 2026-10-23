@@ -3,31 +3,48 @@ import CoreImage
 import Foundation
 import simd
 
-/// A page recoloured for Dark Mode: lightness turns over, colour stays. Each
-/// colour's OKLab lightness is flipped onto a dark grey to off-white range,
-/// keeping its hue and as much of its chroma as sRGB can show, so black ink
-/// reads light, white paper goes dark, and red ink is still red.
+/// A page recoloured for Dark Mode. Greys turn over: each one's OKLab lightness
+/// is flipped onto a dark grey to off-white range, so black ink reads light and
+/// white paper goes dark. Strong colour is ink, and keeps its own lightness, no
+/// darker than reads on the dark page, so a yellow pen stays bright yellow.
+/// Faint tints, a highlighter's, turn over like paper, with their colour
+/// strengthened so they still show on the dark page. Hue always stays.
 public enum DarkPage {
     /// OKLab lightness white paper becomes: about #1e1e1e.
     static let paper = 0.235
     /// OKLab lightness black ink becomes: about #e0e0e0, softer than white on dark.
     static let ink = 0.9
+    /// The least lightness coloured ink keeps, to read on the paper.
+    static let readable = 0.65
+    /// OKLab chroma from which a colour counts as ink: reMarkable's pens are 0.118 (cyan) and up,
+    /// its highlighters over white paper 0.107 (magenta) and under.
+    static let inkChroma = (from: 0.105, full: 0.118)
+    /// How much more chroma a turned-over tint gets.
+    static let tintBoost = 2.0
 
     /// One sRGB colour, components 0...1, recoloured.
     static func darken(_ rgb: SIMD3<Double>) -> SIMD3<Double> {
         let lab = OKLab(srgb: rgb)
-        let lightness = paper + (1 - lab.l) * (ink - paper)
+        let chroma = (lab.a * lab.a + lab.b * lab.b).squareRoot()
+        let turned = paper + (1 - lab.l) * (ink - paper)
+        // 0 for a grey or a tint, 1 for ink, smoothly between
+        let x = min(1, max(0, (chroma - inkChroma.from) / (inkChroma.full - inkChroma.from)))
+        let inkness = x * x * (3 - 2 * x)
+        let kept = min(ink, max(readable, lab.l))
+        let lightness = turned + (kept - turned) * inkness
+        let boost = 1 + (tintBoost - 1) * (1 - inkness)
+        let (a, b) = (lab.a * boost, lab.b * boost)
         // too much chroma at the new lightness falls outside sRGB: give up chroma, not hue
         var (low, high) = (0.0, 1.0)
-        if !OKLab(l: lightness, a: lab.a, b: lab.b).inGamut {
+        if !OKLab(l: lightness, a: a, b: b).inGamut {
             for _ in 0..<16 {
                 let mid = (low + high) / 2
-                if OKLab(l: lightness, a: lab.a * mid, b: lab.b * mid).inGamut { low = mid } else { high = mid }
+                if OKLab(l: lightness, a: a * mid, b: b * mid).inGamut { low = mid } else { high = mid }
             }
         } else {
             low = 1
         }
-        let rgb = OKLab(l: lightness, a: lab.a * low, b: lab.b * low).srgb
+        let rgb = OKLab(l: lightness, a: a * low, b: b * low).srgb
         return simd_clamp(rgb, .zero, .one)
     }
 

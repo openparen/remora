@@ -21,6 +21,19 @@ import Testing
         #expect(OKLab(srgb: red).l > DarkPage.paper + 0.25 && OKLab(srgb: blue).l > DarkPage.paper + 0.25)
     }
 
+    @Test func brightInkStaysBrightAndHighlightsGoDark() {
+        // a yellow pen would turn dark olive if it turned over like paper
+        let yellow = SIMD3<Double>(0xf5, 0xd8, 0x00) / 255
+        #expect(OKLab(srgb: DarkPage.darken(yellow)).l > 0.85)
+        // every highlighter, at its 35% over white, is a dark tint, with more colour than plain turning gives
+        for hex: [Double] in [[0xf5, 0xd8, 0x00], [0x00, 0xa0, 0x00], [0xff, 0x70, 0xc0], [0x00, 0x62, 0xcc], [0xd0, 0x20, 0x20], [0xc0, 0x00, 0xa0]] {
+            let tint = SIMD3(hex[0], hex[1], hex[2]) / 255 * 0.35 + SIMD3(repeating: 0.65)
+            let dark = OKLab(srgb: DarkPage.darken(tint))
+            #expect(dark.l < 0.45)
+            #expect((dark.a * dark.a + dark.b * dark.b).squareRoot() > 0.05)
+        }
+    }
+
     @Test func everyColourLandsInRange() {
         for r in stride(from: 0.0, through: 1, by: 0.25) {
             for g in stride(from: 0.0, through: 1, by: 0.25) {
