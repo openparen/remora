@@ -73,6 +73,8 @@ struct NotebookView: View {
     /// Clockwise quarter turns, remembered per document.
     @State private var turns: Int
     @GestureState private var pinch = 1.0
+    @AppStorage(DarkPages.key) private var darkPages = false
+    @Environment(\.colorScheme) private var colorScheme
     private let router = Router.shared
 
     init(account: AccountState, item: LibraryItem, firstPage: String?) {
@@ -115,7 +117,8 @@ struct NotebookView: View {
                     LazyVStack(spacing: 16) {
                         ForEach(document.pages, id: \.id) { page in
                             PageView(document: document, page: page, blobs: account.sync.blobs,
-                                     renderWidth: renderWidth, shownWidth: shownWidth, turns: turns)
+                                     renderWidth: renderWidth, shownWidth: shownWidth, turns: turns,
+                                     dark: darkPages && colorScheme == .dark)
                                 .id(page.id)
                                 .contextMenu { PageMenu(item: item, page: page) { await image(of: page, in: document) } }
                                 .onGeometryChange(for: Bool.self) { frame in
@@ -249,16 +252,18 @@ struct PageView: View {
     let shownWidth: Double
     /// Clockwise quarter turns.
     let turns: Int
+    /// Recoloured for Dark Mode.
+    let dark: Bool
 
     @Environment(\.displayScale) private var displayScale
-    /// The page as last drawn, and the turns it was drawn at.
-    @State private var rendered: (image: CGImage, template: PageTemplate?, drops: PageDrops, turns: Int)?
+    /// The page as last drawn, and the turns and colours it was drawn at.
+    @State private var rendered: (image: CGImage, template: PageTemplate?, drops: PageDrops, turns: Int, dark: Bool)?
     @State private var problem: String?
 
     var body: some View {
         let upright = document.content.orientation == .landscape ? 3.0 / 4 : 4.0 / 3
-        // a drawing made at other turns has the wrong shape: use the placeholder's until the new one arrives
-        let current = rendered.flatMap { $0.turns == turns ? $0 : nil }
+        // a drawing made at other turns has the wrong shape, or in the other colours: use the placeholder's until the new one arrives
+        let current = rendered.flatMap { $0.turns == turns && $0.dark == dark ? $0 : nil }
         let aspect = current.map { Double($0.image.height) / Double($0.image.width) }
             ?? (turns % 2 == 0 ? upright : 1 / upright)
         ZStack(alignment: .topTrailing) {
@@ -267,7 +272,7 @@ struct PageView: View {
             } else if let problem {
                 Text(problem).foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                Color.white
+                paper
             }
             if rendered != nil, rendered?.template == nil, let name = page.template {
                 Text("template: \(name)").font(.caption).padding(4).background(.thinMaterial).padding(8)
@@ -279,13 +284,13 @@ struct PageView: View {
             }
         }
         .frame(width: shownWidth, height: shownWidth * aspect)
-        .background(Color.white)
+        .background(paper)
         .shadow(radius: 2)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Page \(page.number)")
         // re-render when the settled width moves a step, not on every pixel of a resize
         .task(id: RenderKey(page: page.id, ink: document.inkFile(page)?.hash, template: page.template,
-                            width: Int(renderWidth * displayScale / 256), turns: turns)) {
+                            width: Int(renderWidth * displayScale / 256), turns: turns, dark: dark)) {
             await render()
         }
         .onDisappear { rendered = nil }
@@ -297,7 +302,10 @@ struct PageView: View {
         let template: String?
         let width: Int
         let turns: Int
+        let dark: Bool
     }
+
+    private var paper: Color { dark ? Color(cgColor: DarkPage.paperColor) : .white }
 
     private func render() async {
         let pixels = (renderWidth * displayScale / 256).rounded(.up) * 256
@@ -309,10 +317,13 @@ struct PageView: View {
             do {
                 let result = try await document.render(page, scale: scale, blobs: blobs)
                 // ponytail: turning makes a second bitmap, off the main thread; draw turned in FlatRenderer if memory bites
-                let turns = turns, image = result.image
-                let shown = await Task.detached { image.turned(turns) ?? image }.value
+                let (turns, dark, image) = (turns, dark, result.image)
+                let shown = await Task.detached { () -> CGImage in
+                    let turned = image.turned(turns) ?? image
+                    return dark ? DarkPage.darken(turned) ?? turned : turned
+                }.value
                 guard !Task.isCancelled else { return }
-                rendered = (shown, result.template, result.drops, turns)
+                rendered = (shown, result.template, result.drops, turns, dark)
                 problem = nil
                 return
             } catch FlatRenderer.RenderError.tooLarge {

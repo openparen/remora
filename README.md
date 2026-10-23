@@ -20,9 +20,10 @@ Most of my thinking happens on the tablet: meeting notes, sketches, the margins 
 - **Notebooks** with your ink, coloured and pressure-sensitive, on their lined, grid or dotted templates, typed text included.
 - **PDFs and EPUBs** with ink and highlights where you put them. Links inside a PDF and an EPUB's table of contents work.
 - **The library** as a list or as thumbnails: folders, pinned items, and search across names, tags and folder paths. Several accounts side by side.
+- **Dark Mode, pages included.** Turn on View → Dark Pages in Dark Mode (⇧⌘D) and white pages go dark, black ink goes light, and colours keep their hue, so red ink is still red. Thumbnails follow. View → Always Use Dark Mode keeps Remora dark whatever the Mac is set to. Copied and saved page images stay as they are on the tablet.
 - **Fast, and offline.** Remora opens from its cache, then syncs. Whatever it has seen before is there without a connection.
 
-<p align="center"><img src="site/img/shot-document.png" width="420" alt="A PDF page in Remora with handwritten notes: a circled word, an arrow and a margin note"></p>
+<p align="center"><img src="site/img/shot-document.png" width="420" alt="A PDF page in Remora with handwritten notes: a circled word, an arrow and a margin note"> <img src="site/img/shot-dark.png" width="420" alt="The same PDF in Remora with dark pages: light text on a dark grey page, the illustration still brown"></p>
 
 Remora is a reader. It never edits what you've written.
 
