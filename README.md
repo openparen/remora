@@ -35,7 +35,7 @@ With Homebrew:
 brew install --cask openparen/tap/remora
 ```
 
-Or download `Remora-<version>.dmg` from [Releases](https://github.com/openparen/remora/releases), open it, and drag Remora into Applications. The app is signed and notarized.
+Or [download the DMG](https://remora.open-paren.dev/download) (every version is in [Releases](https://github.com/openparen/remora/releases)), open it, and drag Remora into Applications. The app is signed and notarized.
 
 **You need** macOS 26 or later, and a reMarkable account with cloud sync (Connect).
 

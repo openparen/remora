@@ -1,0 +1,2 @@
+# the newest DMG, straight from the latest GitHub release (release.sh uploads it as Remora.dmg)
+/download https://github.com/openparen/remora/releases/latest/download/Remora.dmg 302

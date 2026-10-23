@@ -80,7 +80,9 @@ grep -q 'source=Notarized Developer ID' "$work/spctl.txt" || fail "Gatekeeper do
 
 git tag -a "$tag" -m "Remora $version"
 git push -q origin "$tag"
-gh release create "$tag" "$dmg" --verify-tag --title "Remora $version" --generate-notes
+# also as Remora.dmg: releases/latest/download/Remora.dmg, and so the site's /download, always gets the newest
+cp "$dmg" "$work/Remora.dmg"
+gh release create "$tag" "$dmg" "$work/Remora.dmg" --verify-tag --title "Remora $version" --generate-notes
 
 # the Homebrew cask: the new version and the DMG's checksum
 tap=${REMORA_TAP:-openparen/homebrew-tap}
