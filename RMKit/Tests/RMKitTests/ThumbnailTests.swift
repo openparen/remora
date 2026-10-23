@@ -1,3 +1,4 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
 import Foundation
 import PDFKit
@@ -88,3 +89,4 @@ import Testing
         #expect(gray(image, x: 200, y: 150) > 200)
     }
 }
+#endif

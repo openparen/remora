@@ -1,4 +1,8 @@
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+import Crypto
+#endif
 import Foundation
 
 /// Content-addressed blobs on disk. A hash names its bytes forever, so nothing
@@ -14,10 +18,22 @@ public struct BlobCache: Sendable {
         self.limit = limit
     }
 
-    /// `~/Library/Caches/Remora/<account>/blobs`
+    /// `~/Library/Caches/Remora/<account>/blobs`; on Linux under `$XDG_CACHE_HOME`, else `~/.cache`
     public static func directory(account: String) -> URL {
         let safe = String(account.map { $0.isLetter || $0.isNumber || $0 == "-" ? $0 : "_" })
-        return URL.cachesDirectory.appending(path: "Remora/\(safe)/blobs")
+        return caches.appending(path: "Remora/\(safe)/blobs")
+    }
+
+    private static var caches: URL {
+        #if os(Linux)
+        // the spec says to ignore a relative path
+        if let xdg = ProcessInfo.processInfo.environment["XDG_CACHE_HOME"], xdg.hasPrefix("/") {
+            return URL(fileURLWithPath: xdg, isDirectory: true)
+        }
+        return URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true).appending(path: ".cache")
+        #else
+        URL.cachesDirectory
+        #endif
     }
 
     static func isEvictable(name: String) -> Bool {

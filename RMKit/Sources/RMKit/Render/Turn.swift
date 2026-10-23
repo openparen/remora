@@ -1,3 +1,4 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
 
 extension CGImage {
@@ -16,3 +17,4 @@ extension CGImage {
         return context.makeImage()
     }
 }
+#endif

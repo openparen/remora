@@ -1,3 +1,4 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
 import Foundation
 
@@ -46,3 +47,4 @@ public enum PDFPlacement {
         CGSize(width: geometry.width * pointsPerPixel, height: geometry.height * pointsPerPixel)
     }
 }
+#endif

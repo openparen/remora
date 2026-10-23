@@ -1,3 +1,4 @@
+#if canImport(CoreImage)
 import CoreGraphics
 import CoreImage
 import Foundation
@@ -132,3 +133,4 @@ struct OKLab {
 private extension SIMD3<Double> {
     func map(_ f: (Double) -> Double) -> Self { Self(f(x), f(y), f(z)) }
 }
+#endif

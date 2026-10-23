@@ -1,3 +1,5 @@
+// needs the Keychain and the Core Graphics renderer; Linux has neither yet
+#if canImport(Security) && canImport(CoreGraphics)
 import Foundation
 import RMKit
 
@@ -107,3 +109,14 @@ struct RemoraCLI {
         return (blobs, try await Library.build(root: try await session.root(), blobs: blobs))
     }
 }
+#else
+import Foundation
+
+@main
+struct RemoraCLI {
+    static func main() {
+        FileHandle.standardError.write(Data("remora-cli: macOS only for now\n".utf8))
+        exit(1)
+    }
+}
+#endif

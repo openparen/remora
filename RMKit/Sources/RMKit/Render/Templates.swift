@@ -1,4 +1,6 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 import Foundation
 
 /// The built-in page backgrounds Remora draws itself, chosen by template name.
@@ -51,6 +53,7 @@ public enum PageTemplate: Sendable, Equatable {
         Array(stride(from: start, to: length, by: spacing))
     }
 
+    #if canImport(CoreGraphics)
     /// Draw on a page-coordinate context, y down, before the ink. `bottom` carries
     /// the template on down a page the tablet lengthened past its own height.
     public func draw(in context: CGContext, page: PageGeometry, bottom: Double? = nil) {
@@ -87,4 +90,5 @@ public enum PageTemplate: Sendable, Equatable {
             }
         }
     }
+    #endif
 }
