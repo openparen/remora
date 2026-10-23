@@ -35,6 +35,10 @@ struct ItemCell: View {
     let selected: Bool
     let open: (LibraryItem) -> Void
     @State private var thumbnail: NSImage?
+    @AppStorage(DarkPages.key) private var darkPages = false
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var dark: Bool { darkPages && colorScheme == .dark }
 
     var body: some View {
         VStack(spacing: 6) {
@@ -45,7 +49,7 @@ struct ItemCell: View {
                     Image(nsImage: thumbnail).resizable().interpolation(.high).scaledToFit()
                         .shadow(color: .black.opacity(0.25), radius: 1.5, y: 0.5)
                 } else {
-                    Color.white.aspectRatio(3 / 4, contentMode: .fit)
+                    (dark ? Color(cgColor: DarkPage.paperColor) : .white).aspectRatio(3 / 4, contentMode: .fit)
                         .overlay { Image(systemName: item.kind.symbol).font(.title).foregroundStyle(.tertiary) }
                         .shadow(color: .black.opacity(0.25), radius: 1.5, y: 0.5)
                 }
@@ -64,9 +68,9 @@ struct ItemCell: View {
         .accessibilityLabel("\(item.name), \(item.kind.name)")
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction { open(item) }
-        .task(id: item.hash) {
+        .task(id: "\(item.hash) \(dark)") {
             guard item.kind != .folder else { return }
-            let image = await Thumbnails.shared.image(for: item, in: account)
+            let image = await Thumbnails.shared.image(for: item, in: account, dark: dark)
             // a cancelled cell has scrolled away or moved on to a newer version of its item
             guard !Task.isCancelled else { return }
             thumbnail = image.map { NSImage(cgImage: $0, size: .zero) }
@@ -87,6 +91,17 @@ struct ItemCell: View {
         return cache
     }()
     private var rendering: [String: Task<CGImage?, Never>] = [:]
+
+    /// The thumbnail, recoloured for Dark Mode when `dark`; only the light one is saved to disk.
+    func image(for item: LibraryItem, in account: AccountState, dark: Bool) async -> CGImage? {
+        guard dark else { return await image(for: item, in: account) }
+        let key = "\(item.hash) dark" as NSString
+        if let image = memory.object(forKey: key) { return image }
+        guard let light = await image(for: item, in: account),
+              let image = await Task.detached(priority: .userInitiated, operation: { DarkPage.darken(light) }).value else { return nil }
+        memory.setObject(image, forKey: key, cost: image.bytesPerRow * image.height)
+        return image
+    }
 
     func image(for item: LibraryItem, in account: AccountState) async -> CGImage? {
         if let image = memory.object(forKey: item.hash as NSString) { return image }

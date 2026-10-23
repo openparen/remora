@@ -78,6 +78,7 @@ struct DocumentLink: Codable, Hashable {
             self, andSelector: #selector(handleGetURL(_:reply:)),
             forEventClass: AEEventClass(kInternetEventClass), andEventID: AEEventID(kAEGetURL))
         AccountStore.shared.load()
+        DarkPages.applyAlwaysDark()
     }
 
     @objc private func handleGetURL(_ event: NSAppleEventDescriptor, reply: NSAppleEventDescriptor) {
@@ -90,6 +91,8 @@ struct DocumentLink: Codable, Hashable {
 @main
 struct RemoraApp: App {
     @NSApplicationDelegateAdaptor private var delegate: AppDelegate
+    @AppStorage(DarkPages.key) private var darkPages = false
+    @AppStorage(DarkPages.alwaysDarkKey) private var alwaysDark = false
 
     var body: some Scene {
         Window("Library", id: "library") {
@@ -98,6 +101,28 @@ struct RemoraApp: App {
         WindowGroup("Document", id: "doc", for: DocumentLink.self) { $link in
             if let link { DocumentWindow(link: link) }
         }
+        .commands {
+            CommandGroup(after: .toolbar) {
+                Toggle("Always Use Dark Mode", isOn: Binding(get: { alwaysDark }, set: {
+                    alwaysDark = $0
+                    DarkPages.applyAlwaysDark()
+                }))
+                Toggle("Dark Pages in Dark Mode", isOn: $darkPages)
+                    .keyboardShortcut("d", modifiers: [.command, .shift])
+            }
+        }
+    }
+}
+
+/// Pages shown dark while the app is in Dark Mode, when the user asks for it,
+/// and the app kept in Dark Mode whatever the system's appearance.
+enum DarkPages {
+    static let key = "darkPages"
+    static let alwaysDarkKey = "alwaysDark"
+
+    /// Off, the app follows the system again.
+    @MainActor static func applyAlwaysDark() {
+        NSApp.appearance = UserDefaults.standard.bool(forKey: alwaysDarkKey) ? NSAppearance(named: .darkAqua) : nil
     }
 }
 

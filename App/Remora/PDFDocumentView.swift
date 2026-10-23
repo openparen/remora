@@ -16,6 +16,8 @@ struct PDFDocumentView: View {
     @State private var missingPage = false
     /// Clockwise quarter turns, remembered per document.
     @State private var turns: Int
+    @AppStorage(DarkPages.key) private var darkPages = false
+    @Environment(\.colorScheme) private var colorScheme
     private let router = Router.shared
 
     init(account: AccountState, item: LibraryItem, firstPage: String?) {
@@ -42,7 +44,7 @@ struct PDFDocumentView: View {
                     Banner("Links to single pages work once this document has been opened on the tablet.")
                 }
                 // a new model is a new PDF: give it a new view rather than one still showing the old
-                PDFKitView(model: model, item: item, turns: turns, currentIndex: $currentIndex)
+                PDFKitView(model: model, item: item, turns: turns, dark: darkPages && colorScheme == .dark, currentIndex: $currentIndex)
                     .id(ObjectIdentifier(model))
             }
             .onAppear { go(to: router.pageRequest[item.id]?.page ?? firstPage) }
@@ -344,6 +346,8 @@ struct PDFKitView: NSViewRepresentable {
     let model: PDFModel
     let item: LibraryItem
     let turns: Int
+    /// Pages recoloured for Dark Mode; what's around them keeps its own colour.
+    let dark: Bool
     @Binding var currentIndex: Int
 
     func makeCoordinator() -> Coordinator { Coordinator(model: model, item: item, currentIndex: $currentIndex) }
@@ -364,11 +368,24 @@ struct PDFKitView: NSViewRepresentable {
             context.coordinator, selector: #selector(Coordinator.pageChanged(_:)), name: .PDFViewPageChanged, object: view)
         view.document = model.pdf
         model.view = view
+        Self.recolour(view, dark: dark)
         return view
     }
 
     func updateNSView(_ view: PDFView, context: Context) {
         model.turn(to: turns)
+        Self.recolour(view, dark: dark)
+    }
+
+    /// The filter goes on the pages' view, not the PDFView: the gaps between pages are
+    /// see-through there, so the background shows unfiltered.
+    private static func recolour(_ view: PDFView, dark: Bool) {
+        guard let pages = view.documentView, dark == pages.contentFilters.isEmpty else { return }
+        pages.wantsLayer = true
+        pages.layerUsesCoreImageFilters = true
+        pages.contentFilters = dark ? [DarkPage.filter()] : []
+        // the filter would turn the black shadow into a light halo
+        view.pageShadowsEnabled = !dark
     }
 
     // PDFKit calls both on the main thread; @preconcurrency checks that at run time
