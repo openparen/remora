@@ -1,3 +1,4 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
 import Foundation
 import Testing
@@ -58,3 +59,4 @@ import Testing
         #expect(abs(size.width - 1404 * 72 / 227) < 1e-9)
     }
 }
+#endif

@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// Pairing and session tokens. Never retried on 429: the token exchange is
 /// rate-limited, and hammering it is what trips the limit.

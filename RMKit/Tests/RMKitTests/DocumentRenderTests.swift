@@ -1,3 +1,4 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
 import Foundation
 import Testing
@@ -21,3 +22,4 @@ import Testing
         #expect(Document(id: "d", files: [files[0]], content: DocumentContent(), pages: []).pdfFile == nil)
     }
 }
+#endif

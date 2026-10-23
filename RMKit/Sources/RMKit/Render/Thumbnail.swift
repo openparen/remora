@@ -1,3 +1,4 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
 import Foundation
 
@@ -51,3 +52,4 @@ public enum Thumbnail {
         return context.makeImage()
     }
 }
+#endif

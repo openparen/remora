@@ -1,3 +1,4 @@
+#if canImport(Security)
 import Foundation
 import Testing
 @testable import RMKit
@@ -20,3 +21,4 @@ struct KeychainTests {
         #expect(try keychain.accounts() == [])
     }
 }
+#endif

@@ -1,3 +1,4 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
 import Testing
 @testable import RMKit
@@ -29,3 +30,4 @@ import Testing
         #expect(red(image, x, y) < 50)
     }
 }
+#endif

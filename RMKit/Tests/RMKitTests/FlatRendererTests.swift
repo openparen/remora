@@ -1,3 +1,4 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
 import Foundation
 import Testing
@@ -120,3 +121,4 @@ import Testing
         }
     }
 }
+#endif

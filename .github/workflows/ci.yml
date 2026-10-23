@@ -1,0 +1,16 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # keeps RMKit building on Linux; the macOS build and tests run locally before a release
+  rmkit-linux:
+    runs-on: ubuntu-latest
+    container: swift:6.2
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift build --package-path RMKit
+      - run: swift test --package-path RMKit

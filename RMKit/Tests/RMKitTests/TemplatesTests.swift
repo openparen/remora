@@ -1,4 +1,6 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 import Foundation
 import Testing
 @testable import RMKit
@@ -27,6 +29,7 @@ import Testing
         #expect(abs(rows[1] - 256.5) < 1e-9)
     }
 
+    #if canImport(CoreGraphics)
     /// The darkness (255 minus red) at a pixel, rows from the top.
     func ink(_ image: CGImage, _ x: Int, _ y: Int) -> Int {
         var pixels = [UInt8](repeating: 0, count: image.width * image.height * 4)
@@ -58,11 +61,13 @@ import Testing
         #expect(max(ink(image, 700, 2853), ink(image, 700, 2854)) > 20)
         #expect(ink(image, 700, 2893) == 0) // halfway to the next line
     }
+    #endif
 
     @Test func dotsSmallSitsOnTheFormulaOffset() {
-        #expect(PageTemplate(name: "P Dots S", page: rm2) == .dots(spacing: 42.5, x: -234 - 22 + 1))
+        #expect(PageTemplate(name: "P Dots S", page: rm2) == .dots(spacing: 42.5, x: -234.0 - 22 + 1))
     }
 
+    #if canImport(CoreGraphics)
     @Test func dotsSurviveASmallRender() throws {
         let blank = NormalizedPage(strokes: [], drops: PageDrops(), geometry: rm2)
         let image = try FlatRenderer.image(blank, scale: 0.15, template: .dots(spacing: 78, x: 0))
@@ -75,4 +80,5 @@ import Testing
         let dark = stride(from: 0, to: pixels.count, by: 4).filter { pixels[$0] < 255 }.count
         #expect(dark > 300) // 432 dots; without antialiasing each still lands on a pixel
     }
+    #endif
 }

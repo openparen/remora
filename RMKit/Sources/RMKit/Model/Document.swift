@@ -1,4 +1,6 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 import Foundation
 
 /// An opened document: its files, its content and its pages in order.
@@ -60,6 +62,7 @@ public struct Document: Sendable {
         return normalize(rm, orientation: content.orientation)
     }
 
+    #if canImport(CoreGraphics)
     /// The page drawn at `scale` with its template under the ink. A blank page
     /// (no ink file) is just its template. `template` is nil when the page names
     /// one Remora doesn't draw; the caller shows `page.template` instead.
@@ -71,4 +74,5 @@ public struct Document: Sendable {
         let image = try FlatRenderer.image(ink, scale: scale, template: template ?? .blank)
         return (image, template, ink.drops)
     }
+    #endif
 }

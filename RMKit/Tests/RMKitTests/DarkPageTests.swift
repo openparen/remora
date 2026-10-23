@@ -1,3 +1,4 @@
+#if canImport(CoreImage)
 import CoreGraphics
 import Foundation
 import Testing
@@ -60,3 +61,4 @@ import Testing
         #expect(abs(Int(bytes[0]) - 30) <= 3)
     }
 }
+#endif

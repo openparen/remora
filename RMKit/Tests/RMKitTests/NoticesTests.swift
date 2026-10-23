@@ -1,3 +1,4 @@
+#if canImport(Network)
 import Foundation
 import Network
 import Testing
@@ -204,3 +205,4 @@ func eventually(within limit: Duration = .seconds(5), _ condition: () -> Bool) a
         #expect(server.connects.value.count == 1)
     }
 }
+#endif

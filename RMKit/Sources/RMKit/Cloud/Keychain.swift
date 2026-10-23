@@ -1,3 +1,4 @@
+#if canImport(Security)
 import Foundation
 import Security
 
@@ -78,3 +79,4 @@ public struct Keychain: Sendable {
         guard status == errSecSuccess || status == errSecItemNotFound else { throw Failure(status: status) }
     }
 }
+#endif

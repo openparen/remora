@@ -1,3 +1,4 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
 import CoreText
 import Foundation
@@ -164,3 +165,4 @@ public enum FlatRenderer {
             alpha: 1)
     }
 }
+#endif
